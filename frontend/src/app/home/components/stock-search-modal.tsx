@@ -90,7 +90,21 @@ export default function StockSearchModal({ children }: StockSearchModalProps) {
     const exchange = (stock.exchange || "").toUpperCase();
     const prefix = (stock.ticker?.split(":")[0] || "").toUpperCase();
 
-    const US_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX"]);
+    const US_EXCHANGES = new Set([
+      "AMEX",
+      "BATS",
+      "CBOE",
+      "NASDAQ",
+      "NASDAQCM",
+      "NASDAQGM",
+      "NASDAQGS",
+      "NYSE",
+      "NYSEAMERICAN",
+      "NYSEARCA",
+      "OTC",
+      "OTCQB",
+      "OTCQX",
+    ]);
     const CN_EXCHANGES = new Set(["SSE", "SZSE", "HKEX"]);
     const JP_EXCHANGES = new Set(["TSE", "JPX", "TYO"]);
 
@@ -100,8 +114,9 @@ export default function StockSearchModal({ children }: StockSearchModalProps) {
     const isJP = JP_EXCHANGES.has(exchange) || JP_EXCHANGES.has(prefix);
 
     const isStock = assetType === "stock";
+    const isEtf = assetType === "etf";
 
-    return isCrypto || (isStock && (isUS || isCN || isJP));
+    return isCrypto || ((isStock || isEtf) && (isUS || isCN || isJP));
   });
 
   return (

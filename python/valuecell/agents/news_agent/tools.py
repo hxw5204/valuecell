@@ -82,22 +82,29 @@ async def get_breaking_news() -> str:
 
 
 async def get_financial_news(
-    ticker: Optional[str] = None, sector: Optional[str] = None
+    ticker: Optional[str] = None,
+    sector: Optional[str] = None,
+    asset_type: Optional[str] = None,
 ) -> str:
     """Get financial and market news.
 
     Args:
-        ticker: Stock ticker symbol for company-specific news
+        ticker: Stock or ETF ticker symbol for asset-specific news
         sector: Industry sector for sector-specific news
+        asset_type: Asset type hint (e.g., "stock" or "etf")
 
     Returns:
         Formatted string containing financial news
     """
     try:
         search_query = "financial market news"
+        asset_type_normalized = asset_type.strip().lower() if asset_type else None
 
         if ticker:
-            search_query = f"{ticker} stock news financial market"
+            if asset_type_normalized == "etf":
+                search_query = f"{ticker} ETF news financial market"
+            else:
+                search_query = f"{ticker} stock news financial market"
         elif sector:
             search_query = f"{sector} sector financial news market"
 

@@ -399,17 +399,17 @@
       "error": "株価データの読み込みに失敗しました: {{message}}",
       "remove": "削除",
       "removing": "削除中...",
-      "add": "銘柄を追加",
+      "add": "株式/ETFを追加",
       "about": "概要",
       "sector": "セクター:",
       "industry": "業界:",
       "website": "ウェブサイト:"
     },
     "search": {
-      "title": "株式検索",
-      "placeholder": "銘柄名またはコードで検索",
+      "title": "株式/ETF検索",
+      "placeholder": "株式またはETFの銘柄名/コードで検索",
       "searching": "検索中...",
-      "noResults": "関連する銘柄が見つかりません",
+      "noResults": "関連する株式/ETFが見つかりません",
       "action": {
         "watch": "ウォッチ",
         "watching": "追加中...",

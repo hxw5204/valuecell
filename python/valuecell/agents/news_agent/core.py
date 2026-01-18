@@ -117,13 +117,14 @@ class NewsAgent(BaseAgent):
                 },
                 {
                     "name": "get_financial_news",
-                    "description": "Get financial and market news",
+                    "description": "Get financial and market news (stocks and ETFs)",
                 },
             ],
             "supported_queries": [
                 "Latest news",
                 "Breaking news",
                 "Financial news",
+                "ETF news",
                 "Market updates",
                 "Topic-specific news search",
             ],
