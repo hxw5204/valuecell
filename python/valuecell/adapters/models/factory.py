@@ -906,6 +906,7 @@ class ModelFactory:
 
             # Check if specified provider is available (has API key)
             provider = emb.provider
+            configured_provider = emb.provider
             model_id = emb.model_id
             is_valid, error_msg = self.config_manager.validate_provider(provider)
 
@@ -917,6 +918,15 @@ class ModelFactory:
                     f"Falling back to primary provider: {fallback_provider}"
                 )
                 provider = fallback_provider
+
+                if provider != configured_provider:
+                    merged_params = {**kwargs}
+                    logger.info(
+                        "Resetting embedding parameters for fallback provider '{provider}' "
+                        "because the configured provider '{configured}' was unavailable.",
+                        provider=provider,
+                        configured=configured_provider,
+                    )
 
                 # Update model_id for the fallback provider
                 # Priority: provider_models[fallback_provider] > provider's default_embedding_model
@@ -1189,7 +1199,50 @@ class ModelFactory:
         provider_instance = provider_class(provider_config)
 
         # Create embedder
-        return provider_instance.create_embedder(model_id, **kwargs)
+        normalized_kwargs = self._normalize_embedding_params(
+            provider_config, model_id, kwargs
+        )
+        return provider_instance.create_embedder(model_id, **normalized_kwargs)
+
+    def _normalize_embedding_params(
+        self,
+        provider_config: ProviderConfig,
+        model_id: Optional[str],
+        params: dict,
+    ) -> dict:
+        normalized = dict(params)
+        resolved_model_id = model_id or provider_config.default_embedding_model
+        if not resolved_model_id:
+            return normalized
+        if "dimensions" not in normalized:
+            return normalized
+
+        expected_dimensions = None
+        for model in provider_config.embedding_models:
+            if model.get("id") == resolved_model_id:
+                expected_dimensions = model.get("dimensions")
+                break
+
+        if expected_dimensions is None:
+            return normalized
+
+        provided_dimensions = normalized.get("dimensions")
+        normalized_dimensions = provided_dimensions
+        if isinstance(provided_dimensions, str) and provided_dimensions.isdigit():
+            normalized_dimensions = int(provided_dimensions)
+
+        if normalized_dimensions != expected_dimensions:
+            logger.warning(
+                "Adjusting embedding dimensions from {provided} to {expected} for "
+                "provider '{provider}' model '{model_id}'.",
+                provided=normalized_dimensions,
+                expected=expected_dimensions,
+                provider=provider_config.name,
+                model_id=resolved_model_id,
+            )
+            normalized["dimensions"] = expected_dimensions
+
+        return normalized
 
 
 # ============================================

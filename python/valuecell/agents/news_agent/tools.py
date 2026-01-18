@@ -15,8 +15,9 @@ async def web_search(query: str) -> str:
 
     This function uses the centralized configuration system to create model instances.
     It supports multiple search providers:
+    - OpenAI (search-enabled models) - default when WEB_SEARCH_PROVIDER=openai and OPENAI_API_KEY is set
     - Google (Gemini with search enabled) - when WEB_SEARCH_PROVIDER=google and GOOGLE_API_KEY is set
-    - Perplexity (via OpenRouter) - default fallback
+    - Perplexity (via OpenRouter) - fallback
 
     Args:
         query: The search query string.
@@ -25,7 +26,12 @@ async def web_search(query: str) -> str:
         A summary of the top search results.
     """
     # Check which provider to use based on environment configuration
-    if os.getenv("WEB_SEARCH_PROVIDER", "google").lower() == "google" and os.getenv(
+    provider = os.getenv("WEB_SEARCH_PROVIDER", "openai").lower()
+
+    if provider == "openai" and os.getenv("OPENAI_API_KEY"):
+        return await _web_search_openai(query)
+
+    if provider == "google" and os.getenv(
         "GOOGLE_API_KEY"
     ):
         return await _web_search_google(query)
@@ -58,6 +64,23 @@ async def _web_search_google(query: str) -> str:
         provider="google",
         model_id="gemini-2.5-flash",
         search=True,  # Enable Google Search grounding
+    )
+    response = await Agent(model=model).arun(query)
+    return response.content
+
+
+async def _web_search_openai(query: str) -> str:
+    """Search the web with OpenAI search-enabled models.
+
+    Args:
+        query: The search query string.
+
+    Returns:
+        A summary of the top search results.
+    """
+    model = create_model(
+        provider="openai",
+        model_id="gpt-4o-mini-search-preview",
     )
     response = await Agent(model=model).arun(query)
     return response.content
