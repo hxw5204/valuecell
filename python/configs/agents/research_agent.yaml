@@ -9,8 +9,8 @@ enabled: true
 models:
   # Primary model for reasoning and generation
   primary:
-    model_id: "google/gemini-2.5-flash"
-    provider: "openrouter"
+    model_id: "gpt-4.1-2025-04-14"
+    provider: "openai"
     # Provider-specific model mappings for fallback
     provider_models:
       siliconflow: "Qwen/Qwen3-235B-A22B-Thinking-2507"
@@ -44,4 +44,3 @@ env_overrides:
   EMBEDDER_MODEL_ID: "models.embedding.model_id"
   EMBEDDER_MODEL_PROVIDER: "models.embedding.provider"
   EMBEDDER_DIMENSION: "models.embedding.parameters.dimensions"
-
