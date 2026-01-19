@@ -6,6 +6,7 @@ import type {
   ScreenerCandidateListResponse,
   ScreenerExportResponse,
   ScreenerRunConfig,
+  ScreenerRunDeleteResponse,
   ScreenerRunDetailResponse,
   ScreenerRunListResponse,
   ScreenerRunResponse,
@@ -84,5 +85,20 @@ export const useExportScreenerCandidates = (runId?: string | null) => {
       ),
     select: (data) => data.data,
     enabled: !!runId,
+  });
+};
+
+export const useDeleteScreenerRun = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) =>
+      apiClient.delete<ApiResponse<ScreenerRunDeleteResponse>>(
+        `/screener/runs/${runId}`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: API_QUERY_KEYS.SCREENER.runs,
+      });
+    },
   });
 };

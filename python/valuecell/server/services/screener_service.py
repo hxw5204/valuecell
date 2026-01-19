@@ -17,6 +17,7 @@ from valuecell.screener.schemas import (
     ScreenerRunSummary,
 )
 from valuecell.screener.storage import (
+    delete_run,
     list_runs,
     load_candidate_detail,
     load_candidates,
@@ -58,3 +59,7 @@ class ScreenerService:
     @staticmethod
     def get_export_csv(run_id: str) -> Optional[str]:
         return load_export_csv(run_id)
+
+    @staticmethod
+    def delete_run(run_id: str) -> bool:
+        return delete_run(run_id)

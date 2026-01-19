@@ -78,3 +78,9 @@ class ScreenerExportData(BaseModel):
     filename: str = Field(..., description="Export filename")
     content_type: str = Field(..., description="Content type")
     content: str = Field(..., description="CSV content")
+
+
+class ScreenerRunDeleteData(BaseModel):
+    """Response payload for deleting a run."""
+
+    run_id: str = Field(..., description="Run identifier")

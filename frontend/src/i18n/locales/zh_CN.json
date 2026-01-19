@@ -129,7 +129,9 @@
     "history": {
       "title": "运行历史",
       "empty": "暂无运行记录。",
-      "candidates": "{{count}} 个候选"
+      "candidates": "{{count}} 个候选",
+      "delete": "删除记录",
+      "deleteConfirm": "删除此筛选记录？此操作无法撤销。"
     },
     "runSummary": {
       "title": "运行摘要",

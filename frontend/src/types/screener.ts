@@ -145,3 +145,7 @@ export interface ScreenerExportResponse {
   content_type: string;
   content: string;
 }
+
+export interface ScreenerRunDeleteResponse {
+  run_id: string;
+}

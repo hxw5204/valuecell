@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -263,3 +264,16 @@ def load_export_csv(run_id: str) -> Optional[str]:
     if not csv_path.exists():
         return None
     return csv_path.read_text(encoding="utf-8")
+
+
+def delete_run(run_id: str) -> bool:
+    """Delete all artifacts for a screener run."""
+    run_dir = get_runs_root() / run_id
+    if not run_dir.exists():
+        return False
+    if not run_dir.is_dir():
+        logger.warning("Run path {path} is not a directory", path=run_dir)
+        return False
+    shutil.rmtree(run_dir)
+    logger.info("Deleted screener run {run_id}", run_id=run_id)
+    return True
