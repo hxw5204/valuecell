@@ -154,7 +154,13 @@
       "rationale": "Rationale",
       "evidence": "Evidence chain",
       "noEvidence": "No evidence captured yet.",
-      "logic": "Logic graph"
+      "noEvidenceHint": "Include financial reports, news, macro or micro signals, and timestamps.",
+      "publishedAt": "Published",
+      "retrievedAt": "Retrieved",
+      "sourceLink": "Open source",
+      "logic": "Logic graph",
+      "noLogic": "No logic graph captured yet.",
+      "noLogicHint": "Provide traceable reasoning nodes, relationships, and evidence references."
     }
   },
   "updates": {
