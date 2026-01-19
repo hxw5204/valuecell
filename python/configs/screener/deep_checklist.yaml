@@ -1,0 +1,14 @@
+modules:
+  supply_chain:
+    - question: "Identify top customers and concentration changes."
+    - question: "Map key suppliers and raw material dependencies."
+    - question: "Summarize competitive positioning in the chain."
+  orders_demand:
+    - question: "Extract backlog or RPO figures and their momentum."
+    - question: "Detect lead/lag between orders and revenue."
+  capex_capacity:
+    - question: "Capture capex guidance and expansion milestones."
+    - question: "Compare capex intensity to historical averages."
+  earnings_inflection:
+    - question: "Explain margin changes and underlying drivers."
+    - question: "Validate cash flow quality versus earnings."

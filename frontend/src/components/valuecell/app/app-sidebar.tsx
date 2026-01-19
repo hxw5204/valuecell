@@ -12,6 +12,7 @@ import {
   Conversation,
   Logo,
   Market,
+  Ranking,
   Setting,
   StrategyAgent,
 } from "@/assets/svg";
@@ -165,6 +166,12 @@ const AppSidebar: FC = () => {
           icon: Market,
           label: t("nav.market"),
           to: "/market",
+        },
+        {
+          id: "screener",
+          icon: Ranking,
+          label: t("nav.screener"),
+          to: "/screener",
         },
       ],
       config: [

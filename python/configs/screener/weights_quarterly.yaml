@@ -1,0 +1,12 @@
+wide:
+  fundamental_momentum: 0.25
+  valuation: 0.20
+  market_momentum: 0.20
+  attention_underpriced: 0.15
+deep:
+  supply_chain: 0.30
+  inflection: 0.40
+  capex_cycle: 0.25
+risk:
+  balance_sheet: 0.30
+  volatility: 0.10

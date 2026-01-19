@@ -112,7 +112,50 @@
     "strategy": "Strategy",
     "ranking": "Ranking",
     "market": "Market",
+    "screener": "Screener",
     "setting": "Setting"
+  },
+  "screener": {
+    "title": "Stock Screener",
+    "subtitle": "Run wide-to-deep scans and inspect evidence chains.",
+    "frequency": {
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "quarterly": "Quarterly"
+    },
+    "runNow": "Run now",
+    "running": "Running...",
+    "export": "Export CSV",
+    "history": {
+      "title": "Run history",
+      "empty": "No screener runs yet.",
+      "candidates": "{{count}} candidates"
+    },
+    "runSummary": {
+      "title": "Run summary",
+      "universe": "Universe size",
+      "config": "Config hash",
+      "git": "Code revision",
+      "frequency": "Frequency"
+    },
+    "candidates": {
+      "title": "Candidate pool",
+      "rank": "Rank",
+      "ticker": "Ticker",
+      "score": "Total",
+      "wide": "Wide",
+      "deep": "Deep",
+      "empty": "No candidates yet."
+    },
+    "detail": {
+      "title": "Evidence & logic",
+      "empty": "Select a candidate to inspect evidence.",
+      "score": "Score",
+      "rationale": "Rationale",
+      "evidence": "Evidence chain",
+      "noEvidence": "No evidence captured yet.",
+      "logic": "Logic graph"
+    }
   },
   "updates": {
     "toast": {

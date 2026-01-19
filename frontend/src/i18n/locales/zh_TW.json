@@ -112,7 +112,50 @@
     "strategy": "策略",
     "ranking": "排行榜",
     "market": "市場",
+    "screener": "選股",
     "setting": "設定"
+  },
+  "screener": {
+    "title": "Stock Screener",
+    "subtitle": "執行廣度到深度掃描，查看可追溯證據鏈。",
+    "frequency": {
+      "weekly": "每週",
+      "monthly": "每月",
+      "quarterly": "每季"
+    },
+    "runNow": "立即執行",
+    "running": "執行中...",
+    "export": "匯出 CSV",
+    "history": {
+      "title": "執行紀錄",
+      "empty": "尚無執行紀錄。",
+      "candidates": "{{count}} 檔候選"
+    },
+    "runSummary": {
+      "title": "執行摘要",
+      "universe": "樣本規模",
+      "config": "設定雜湊",
+      "git": "程式版本",
+      "frequency": "頻率"
+    },
+    "candidates": {
+      "title": "候選池",
+      "rank": "排名",
+      "ticker": "代號",
+      "score": "總分",
+      "wide": "廣度",
+      "deep": "深度",
+      "empty": "尚無候選。"
+    },
+    "detail": {
+      "title": "證據與邏輯",
+      "empty": "請選擇候選以查看證據。",
+      "score": "得分",
+      "rationale": "入選理由",
+      "evidence": "證據鏈",
+      "noEvidence": "尚無證據。",
+      "logic": "邏輯圖譜"
+    }
   },
   "updates": {
     "toast": {
