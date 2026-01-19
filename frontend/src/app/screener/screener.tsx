@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  useDeleteScreenerRun,
   useExportScreenerCandidates,
   useGetScreenerCandidateDetail,
   useGetScreenerCandidates,
@@ -26,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Trash2 } from "lucide-react";
 import type { ScreenerRunConfig } from "@/types/screener";
 
 const FREQUENCY_OPTIONS: Array<ScreenerRunConfig["frequency"]> = [
@@ -70,10 +72,19 @@ export default function ScreenerPage() {
   );
   const { data: exportData } = useExportScreenerCandidates(selectedRunId);
   const { mutateAsync: runScreener, isPending } = useRunScreener();
+  const { mutateAsync: deleteRun, isPending: deletePending } =
+    useDeleteScreenerRun();
 
   useEffect(() => {
-    if (!selectedRunId && runs.length > 0) {
+    if (runs.length === 0) {
+      setSelectedRunId(null);
+      setSelectedTicker(null);
+      return;
+    }
+    const hasSelectedRun = runs.some((run) => run.run_id === selectedRunId);
+    if (!selectedRunId || !hasSelectedRun) {
       setSelectedRunId(runs[0].run_id);
+      setSelectedTicker(null);
     }
   }, [runs, selectedRunId]);
 
@@ -101,6 +112,16 @@ export default function ScreenerPage() {
     link.download = exportData.filename;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDeleteRun = async (runId: string) => {
+    const confirmed = window.confirm(t("screener.history.deleteConfirm"));
+    if (!confirmed) return;
+    await deleteRun(runId);
+    if (runId === selectedRunId) {
+      setSelectedRunId(null);
+      setSelectedTicker(null);
+    }
   };
 
   const selectedCandidate = useMemo(
@@ -162,28 +183,46 @@ export default function ScreenerPage() {
                   {t("screener.history.empty")}
                 </p>
               )}
-              {runs.map((run) => (
-                <button
-                  key={run.run_id}
-                  type="button"
-                  onClick={() => setSelectedRunId(run.run_id)}
-                  className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
-                    run.run_id === selectedRunId
-                      ? "border-primary bg-primary/10"
-                      : "border-border hover:border-primary/40"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{run.as_of_date}</span>
-                    <Badge variant="secondary">{run.status}</Badge>
+              {runs.map((run) => {
+                const isSelected = run.run_id === selectedRunId;
+                return (
+                  <div
+                    key={run.run_id}
+                    className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm transition ${
+                      isSelected
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/40"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRunId(run.run_id)}
+                      className="flex-1 text-left"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{run.as_of_date}</span>
+                        <Badge variant="secondary">{run.status}</Badge>
+                      </div>
+                      <div className="mt-1 text-muted-foreground text-xs">
+                        {t("screener.history.candidates", {
+                          count: run.candidate_count,
+                        })}
+                      </div>
+                    </button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteRun(run.run_id)}
+                      disabled={deletePending}
+                      title={t("screener.history.delete")}
+                      aria-label={t("screener.history.delete")}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
                   </div>
-                  <div className="mt-1 text-muted-foreground text-xs">
-                    {t("screener.history.candidates", {
-                      count: run.candidate_count,
-                    })}
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

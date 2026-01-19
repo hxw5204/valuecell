@@ -129,7 +129,9 @@
     "history": {
       "title": "実行履歴",
       "empty": "実行履歴はありません。",
-      "candidates": "{{count}} 件の候補"
+      "candidates": "{{count}} 件の候補",
+      "delete": "削除",
+      "deleteConfirm": "このスクリーナー実行履歴を削除しますか？元に戻せません。"
     },
     "runSummary": {
       "title": "実行サマリー",

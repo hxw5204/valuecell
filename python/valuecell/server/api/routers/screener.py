@@ -10,6 +10,7 @@ from valuecell.server.api.schemas.screener import (
     ScreenerCandidateListData,
     ScreenerExportData,
     ScreenerRunData,
+    ScreenerRunDeleteData,
     ScreenerRunDetailData,
     ScreenerRunListData,
     ScreenerRunRequest,
@@ -120,5 +121,19 @@ def create_screener_router() -> APIRouter:
                 content=csv_content,
             )
         )
+
+    @router.delete(
+        "/runs/{run_id}",
+        response_model=SuccessResponse[ScreenerRunDeleteData],
+        summary="Delete screener run",
+        description="Delete a screener run and its stored artifacts.",
+    )
+    async def delete_screener_run(
+        run_id: str = Path(..., description="Run identifier"),
+    ) -> SuccessResponse[ScreenerRunDeleteData]:
+        deleted = ScreenerService.delete_run(run_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return SuccessResponse.create(data=ScreenerRunDeleteData(run_id=run_id))
 
     return router

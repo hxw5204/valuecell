@@ -129,7 +129,9 @@
     "history": {
       "title": "Run history",
       "empty": "No screener runs yet.",
-      "candidates": "{{count}} candidates"
+      "candidates": "{{count}} candidates",
+      "delete": "Delete run",
+      "deleteConfirm": "Delete this screener run? This cannot be undone."
     },
     "runSummary": {
       "title": "Run summary",

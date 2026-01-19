@@ -129,7 +129,9 @@
     "history": {
       "title": "執行紀錄",
       "empty": "尚無執行紀錄。",
-      "candidates": "{{count}} 檔候選"
+      "candidates": "{{count}} 檔候選",
+      "delete": "刪除紀錄",
+      "deleteConfirm": "刪除此篩選紀錄？此操作無法復原。"
     },
     "runSummary": {
       "title": "執行摘要",
