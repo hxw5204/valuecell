@@ -101,7 +101,7 @@ def write_candidate_detail(
     evidence_path = evidence_dir / f"{ticker}.json"
     logic_path = logic_dir / f"{ticker}.json"
 
-    evidence_payload = [item.model_dump() for item in detail.evidence]
+    evidence_payload = [item.model_dump(mode="json") for item in detail.evidence]
     evidence_path.write_text(
         json.dumps(evidence_payload, indent=2, ensure_ascii=False),
         encoding="utf-8",
