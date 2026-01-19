@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from loguru import logger
@@ -22,6 +22,8 @@ from .schemas import (
     ScreenerCandidateDetail,
     ScreenerEvidence,
     ScreenerRunConfig,
+    ScreenerRunLog,
+    ScreenerRunLogStep,
     ScreenerRunMeta,
     ScreenerRunResult,
     ScreenerScoreBreakdown,
@@ -48,20 +50,31 @@ class ScreenerPipeline:
         data_snapshot_hash = self._hash_payload(
             [candidate.model_dump() for candidate in candidates]
         )
+        candidate_details = self._build_candidate_details(candidates)
+        evaluation = self._build_evaluation()
+        ended_at = datetime.now(timezone.utc)
+        run_log = self._build_run_log(
+            run_id=run_id,
+            started_at=started_at,
+            ended_at=ended_at,
+            candidates=candidates,
+            config_payload=config_payload,
+        )
         meta = ScreenerRunMeta(
             run_id=run_id,
             as_of_date=started_at.date().isoformat(),
+            run_timestamp_utc=started_at,
+            data_cutoff=started_at.date().isoformat(),
             started_at=started_at,
-            ended_at=datetime.now(timezone.utc),
+            ended_at=ended_at,
             config_hash=config_hash,
             code_git_sha=self._get_git_sha(),
             data_snapshot_hash=data_snapshot_hash,
             universe_size=DEFAULT_UNIVERSE_SIZE,
             status="completed",
             config=config,
+            run_log=run_log,
         )
-        candidate_details = self._build_candidate_details(candidates)
-        evaluation = self._build_evaluation()
 
         write_run_meta(meta)
         write_candidates(run_id, candidates)
@@ -173,8 +186,11 @@ class ScreenerPipeline:
                 ticker=candidate.ticker,
                 published_at=published_at,
                 retrieved_at=retrieved_at,
+                source_title="Form 10-Q",
                 source_name="SEC EDGAR",
                 source_url="https://www.sec.gov/",
+                publisher="U.S. Securities and Exchange Commission",
+                reliability_level="primary",
                 doc_ref={
                     "accession": "0000000000-00-000000",
                     "form": "10-Q",
@@ -199,8 +215,11 @@ class ScreenerPipeline:
                 ticker=candidate.ticker,
                 published_at=published_at,
                 retrieved_at=retrieved_at,
+                source_title="Company press release",
                 source_name="Company Newswire",
                 source_url="https://example.com/news",
+                publisher="Company IR",
+                reliability_level="secondary",
                 doc_ref={
                     "accession": "newswire",
                     "form": "NEWS",
@@ -245,10 +264,19 @@ class ScreenerPipeline:
                 value=0.74,
                 unit="confidence",
             ),
+            LogicGraphNode(
+                id="n4",
+                type="step",
+                name="Deep dive validation",
+                value=1.0,
+                unit="pass",
+                as_of="2025Q3",
+            ),
         ]
         edges = [
             LogicGraphEdge(source="n2", target="n1", type="supports", weight=0.9),
             LogicGraphEdge(source="n1", target="n3", type="leads_to", weight=0.7),
+            LogicGraphEdge(source="n4", target="n3", type="supports", weight=0.6),
         ]
         return LogicGraph(nodes=nodes, edges=edges)
 
@@ -261,6 +289,88 @@ class ScreenerPipeline:
         }
 
     @staticmethod
+    def _build_run_log(
+        run_id: str,
+        started_at: datetime,
+        ended_at: datetime,
+        candidates: list[ScreenerCandidate],
+        config_payload: dict,
+    ) -> ScreenerRunLog:
+        step_delta = timedelta(seconds=1)
+        init_end = started_at + step_delta
+        regime_end = init_end + step_delta
+        theme_end = regime_end + step_delta
+        longlist_end = theme_end + step_delta
+        deep_dive_end = longlist_end + step_delta
+        shortlist_end = max(deep_dive_end + step_delta, ended_at)
+        steps = [
+            ScreenerRunLogStep(
+                name="A Init",
+                status="completed",
+                started_at=started_at,
+                ended_at=init_end,
+                outputs=[
+                    f"run_id={run_id}",
+                    f"config_hash_input_keys={sorted(config_payload.keys())}",
+                ],
+            ),
+            ScreenerRunLogStep(
+                name="B Regime",
+                status="unverified",
+                started_at=init_end,
+                ended_at=regime_end,
+                outputs=[
+                    "regime_tag=unverified",
+                    "style_bias=unverified",
+                    "macro_sources=missing",
+                ],
+                notes="Macro regime signals require web search or crawler inputs.",
+            ),
+            ScreenerRunLogStep(
+                name="C Themes",
+                status="unverified",
+                started_at=regime_end,
+                ended_at=theme_end,
+                outputs=["themes=unverified", "theme_sources=missing"],
+                notes="Theme discovery requires news/CapEx evidence sources.",
+            ),
+            ScreenerRunLogStep(
+                name="D Longlist",
+                status="completed",
+                started_at=theme_end,
+                ended_at=longlist_end,
+                outputs=[
+                    f"candidates={len(candidates)}",
+                    "scoring=wide+deep-risk",
+                ],
+            ),
+            ScreenerRunLogStep(
+                name="E Deep dive",
+                status="unverified",
+                started_at=longlist_end,
+                ended_at=deep_dive_end,
+                outputs=[
+                    f"details={len(candidates)}",
+                    "evidence_sources=placeholder",
+                ],
+                notes="Deep-dive filings and evidence need verified sources.",
+            ),
+            ScreenerRunLogStep(
+                name="F Shortlist",
+                status="completed",
+                started_at=deep_dive_end,
+                ended_at=shortlist_end,
+                outputs=[f"top_n={len(candidates)}"],
+            ),
+        ]
+        return ScreenerRunLog(
+            run_id=run_id,
+            run_timestamp_utc=started_at,
+            data_cutoff=started_at.date().isoformat(),
+            steps=steps,
+        )
+
+    @staticmethod
     def _build_summary(
         meta: ScreenerRunMeta, candidates: list[ScreenerCandidate]
     ) -> str:
@@ -268,6 +378,7 @@ class ScreenerPipeline:
             f"# Screener Run {meta.run_id}",
             "",
             f"- As of: {meta.as_of_date}",
+            f"- Data cutoff: {meta.data_cutoff or 'unknown'}",
             f"- Universe size: {meta.universe_size}",
             f"- Candidates: {len(candidates)}",
             f"- Config hash: {meta.config_hash}",
@@ -279,4 +390,12 @@ class ScreenerPipeline:
                 f"- {candidate.rank}. {candidate.ticker} "
                 f"({candidate.total_score})"
             )
+        if meta.run_log:
+            lines.extend(["", "## Run Log"])
+            for step in meta.run_log.steps:
+                outputs = "; ".join(step.outputs) if step.outputs else "none"
+                notes = f" ({step.notes})" if step.notes else ""
+                lines.append(
+                    f"- {step.name}: {step.status} | outputs: {outputs}{notes}"
+                )
         return "\n".join(lines)

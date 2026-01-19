@@ -37,6 +37,30 @@ class ScreenerScoreBreakdown(BaseModel):
     )
 
 
+class ScreenerRunLogStep(BaseModel):
+    """Structured log entry for a screener pipeline step."""
+
+    name: str = Field(..., description="Step name")
+    status: Literal["completed", "skipped", "unverified"] = Field(
+        ..., description="Step execution status"
+    )
+    started_at: datetime = Field(..., description="Step start time")
+    ended_at: datetime = Field(..., description="Step end time")
+    outputs: list[str] = Field(default_factory=list, description="Key outputs")
+    notes: Optional[str] = Field(default=None, description="Additional notes")
+
+
+class ScreenerRunLog(BaseModel):
+    """Structured log for a screener run."""
+
+    run_id: str = Field(..., description="Run identifier")
+    run_timestamp_utc: datetime = Field(..., description="Run timestamp (UTC)")
+    data_cutoff: str = Field(..., description="Latest data cutoff date")
+    steps: list[ScreenerRunLogStep] = Field(
+        default_factory=list, description="Pipeline steps"
+    )
+
+
 class ScreenerCandidate(BaseModel):
     """Candidate entry from the screener."""
 
@@ -58,6 +82,12 @@ class ScreenerRunMeta(BaseModel):
 
     run_id: str = Field(..., description="Run identifier")
     as_of_date: str = Field(..., description="As-of date")
+    run_timestamp_utc: Optional[datetime] = Field(
+        default=None, description="Run timestamp (UTC)"
+    )
+    data_cutoff: Optional[str] = Field(
+        default=None, description="Latest data cutoff date"
+    )
     started_at: datetime = Field(..., description="Run start time")
     ended_at: datetime = Field(..., description="Run end time")
     config_hash: str = Field(..., description="Config hash")
@@ -66,6 +96,9 @@ class ScreenerRunMeta(BaseModel):
     universe_size: int = Field(..., description="Universe size")
     status: str = Field(..., description="Run status")
     config: ScreenerRunConfig = Field(..., description="Run configuration")
+    run_log: Optional[ScreenerRunLog] = Field(
+        default=None, description="Run log with pipeline steps"
+    )
 
 
 class ScreenerRunSummary(BaseModel):
@@ -88,8 +121,13 @@ class ScreenerEvidence(BaseModel):
     ticker: str = Field(..., description="Ticker symbol")
     published_at: datetime = Field(..., description="Published timestamp")
     retrieved_at: datetime = Field(..., description="Retrieved timestamp")
+    source_title: Optional[str] = Field(default=None, description="Source title")
     source_name: str = Field(..., description="Source name")
     source_url: str = Field(..., description="Source URL")
+    publisher: Optional[str] = Field(default=None, description="Publisher name")
+    reliability_level: Optional[str] = Field(
+        default=None, description="Reliability level"
+    )
     doc_ref: dict[str, str | int | list[int]] = Field(
         ..., description="Document reference"
     )
