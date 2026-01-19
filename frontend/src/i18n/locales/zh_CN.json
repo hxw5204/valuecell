@@ -154,7 +154,13 @@
       "rationale": "入选理由",
       "evidence": "证据链",
       "noEvidence": "暂无证据。",
-      "logic": "逻辑图谱"
+      "noEvidenceHint": "需要包含财报、新闻、宏观或微观信号，以及时间戳。",
+      "publishedAt": "发布时间",
+      "retrievedAt": "抓取时间",
+      "sourceLink": "打开来源",
+      "logic": "逻辑图谱",
+      "noLogic": "暂无逻辑图谱。",
+      "noLogicHint": "请提供可追踪的逻辑节点、关系与证据引用。"
     }
   },
   "updates": {

@@ -154,7 +154,13 @@
       "rationale": "選定理由",
       "evidence": "根拠チェーン",
       "noEvidence": "根拠はまだありません。",
-      "logic": "ロジックグラフ"
+      "noEvidenceHint": "決算資料、ニュース、マクロ/ミクロのシグナル、タイムスタンプを含めてください。",
+      "publishedAt": "公開日時",
+      "retrievedAt": "取得日時",
+      "sourceLink": "ソースを開く",
+      "logic": "ロジックグラフ",
+      "noLogic": "ロジックグラフはまだありません。",
+      "noLogicHint": "追跡可能な推論ノード、関係性、根拠への参照を提示してください。"
     }
   },
   "updates": {

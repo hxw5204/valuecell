@@ -154,7 +154,13 @@
       "rationale": "入選理由",
       "evidence": "證據鏈",
       "noEvidence": "尚無證據。",
-      "logic": "邏輯圖譜"
+      "noEvidenceHint": "需要包含財報、新聞、宏觀或微觀訊號，以及時間戳。",
+      "publishedAt": "發布時間",
+      "retrievedAt": "擷取時間",
+      "sourceLink": "開啟來源",
+      "logic": "邏輯圖譜",
+      "noLogic": "尚無邏輯圖譜。",
+      "noLogicHint": "請提供可追蹤的邏輯節點、關係與證據引用。"
     }
   },
   "updates": {

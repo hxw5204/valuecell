@@ -34,6 +34,26 @@ const FREQUENCY_OPTIONS: Array<ScreenerRunConfig["frequency"]> = [
   "quarterly",
 ];
 
+const formatTimestamp = (value?: string | null) => {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString();
+};
+
+const formatDocRefs = (docRef: Record<string, string | number | number[]>) => {
+  const entries = Object.entries(docRef);
+  if (entries.length === 0) return null;
+  return entries.map(([key, value]) => {
+    if (Array.isArray(value)) {
+      return `${key}: ${value.join(", ")}`;
+    }
+    return `${key}: ${value}`;
+  });
+};
+
 export default function ScreenerPage() {
   const { t } = useTranslation();
   const [frequency, setFrequency] =
@@ -303,16 +323,42 @@ export default function ScreenerPage() {
                       </div>
                       <ul className="mt-2 space-y-2">
                         {candidateDetail?.evidence.map((item) => (
-                          <li key={item.evidence_id} className="rounded-md border p-2">
+                          <li key={item.evidence_id} className="rounded-md border p-3">
                             <div className="text-xs text-muted-foreground">
                               {item.type} · {item.source_name}
                             </div>
-                            <p className="mt-1 text-sm">{item.quote}</p>
+                            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                              <span>
+                                {t("screener.detail.publishedAt")}:{" "}
+                                {formatTimestamp(item.published_at)}
+                              </span>
+                              <span>
+                                {t("screener.detail.retrievedAt")}:{" "}
+                                {formatTimestamp(item.retrieved_at)}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-sm">{item.quote}</p>
+                            <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
+                              {item.source_url && (
+                                <a
+                                  href={item.source_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary underline-offset-4 hover:underline"
+                                >
+                                  {t("screener.detail.sourceLink")}
+                                </a>
+                              )}
+                              {formatDocRefs(item.doc_ref)?.map((entry) => (
+                                <span key={entry}>{entry}</span>
+                              ))}
+                            </div>
                           </li>
                         ))}
                         {candidateDetail?.evidence.length === 0 && (
-                          <li className="text-muted-foreground text-sm">
-                            {t("screener.detail.noEvidence")}
+                          <li className="space-y-2 text-sm text-muted-foreground">
+                            <p>{t("screener.detail.noEvidence")}</p>
+                            <p>{t("screener.detail.noEvidenceHint")}</p>
                           </li>
                         )}
                       </ul>
@@ -321,11 +367,20 @@ export default function ScreenerPage() {
                       <div className="text-muted-foreground text-xs uppercase">
                         {t("screener.detail.logic")}
                       </div>
-                      <pre className="mt-2 whitespace-pre-wrap rounded-md bg-muted p-2 text-xs">
-                        {candidateDetail
-                          ? JSON.stringify(candidateDetail.logic_graph, null, 2)
-                          : "-"}
-                      </pre>
+                      {!candidateDetail && (
+                        <p className="mt-2 text-sm text-muted-foreground">-</p>
+                      )}
+                      {candidateDetail && candidateDetail.logic_graph.nodes.length === 0 && (
+                        <div className="mt-2 space-y-2 text-sm text-muted-foreground">
+                          <p>{t("screener.detail.noLogic")}</p>
+                          <p>{t("screener.detail.noLogicHint")}</p>
+                        </div>
+                      )}
+                      {candidateDetail && candidateDetail.logic_graph.nodes.length > 0 && (
+                        <pre className="mt-2 whitespace-pre-wrap rounded-md bg-muted p-2 text-xs">
+                          {JSON.stringify(candidateDetail.logic_graph, null, 2)}
+                        </pre>
+                      )}
                     </div>
                   </div>
                 )}
