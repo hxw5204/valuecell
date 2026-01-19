@@ -92,13 +92,48 @@ def _dedupe_universe(entries: list[UniverseTicker]) -> list[UniverseTicker]:
     return list(deduped.values())
 
 
+def _get_item_value(
+    item: object,
+    field_indices: dict[str, int] | None,
+    field_name: str,
+) -> str:
+    if isinstance(item, dict):
+        return str(item.get(field_name, ""))
+    if isinstance(item, (list, tuple)) and field_indices is not None:
+        index = field_indices.get(field_name)
+        if index is None or index >= len(item):
+            return ""
+        return str(item[index])
+    return ""
+
+
 def _parse_universe(payload: dict, allowlist: set[str]) -> list[UniverseTicker]:
     entries: list[UniverseTicker] = []
+    field_indices: dict[str, int] | None = None
+    fields = payload.get("fields")
+    if isinstance(fields, list):
+        field_indices = {
+            field: index
+            for index, field in enumerate(fields)
+            if isinstance(field, str)
+        }
     items = payload.get("data", [])
+    if (
+        isinstance(items, list)
+        and items
+        and isinstance(items[0], (list, tuple))
+        and field_indices is None
+    ):
+        logger.warning(
+            "SEC universe payload missing fields metadata; unable to parse list rows."
+        )
+        return []
     for item in items:
-        ticker = str(item.get("ticker", "")).upper()
-        name = str(item.get("name", "")).strip()
-        exchange = _normalize_exchange(str(item.get("exchange", "")).strip())
+        ticker = _get_item_value(item, field_indices, "ticker").upper()
+        name = _get_item_value(item, field_indices, "name").strip()
+        exchange = _normalize_exchange(
+            _get_item_value(item, field_indices, "exchange").strip()
+        )
         if not ticker or not exchange or exchange not in allowlist:
             continue
         symbol = ticker
