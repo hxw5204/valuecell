@@ -15,6 +15,22 @@ export interface ScreenerScoreBreakdown {
   top_evidence_ids: string[];
 }
 
+export interface ScreenerRunLogStep {
+  name: string;
+  status: "completed" | "skipped" | "unverified";
+  started_at: string;
+  ended_at: string;
+  outputs: string[];
+  notes?: string | null;
+}
+
+export interface ScreenerRunLog {
+  run_id: string;
+  run_timestamp_utc: string;
+  data_cutoff: string;
+  steps: ScreenerRunLogStep[];
+}
+
 export interface ScreenerCandidate {
   ticker: string;
   name: string;
@@ -30,6 +46,8 @@ export interface ScreenerCandidate {
 export interface ScreenerRunMeta {
   run_id: string;
   as_of_date: string;
+  run_timestamp_utc?: string | null;
+  data_cutoff?: string | null;
   started_at: string;
   ended_at: string;
   config_hash: string;
@@ -38,6 +56,7 @@ export interface ScreenerRunMeta {
   universe_size: number;
   status: string;
   config: ScreenerRunConfig;
+  run_log?: ScreenerRunLog | null;
 }
 
 export interface ScreenerRunSummary {
@@ -56,8 +75,11 @@ export interface ScreenerEvidence {
   ticker: string;
   published_at: string;
   retrieved_at: string;
+  source_title?: string | null;
   source_name: string;
   source_url: string;
+  publisher?: string | null;
+  reliability_level?: string | null;
   doc_ref: Record<string, string | number | number[]>;
   quote: string;
   structured: Record<string, string | number>;
