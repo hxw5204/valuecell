@@ -64,6 +64,20 @@ def _safe_growth_rate(latest: float | None, prior: float | None) -> float | None
     return (latest - prior) / abs(prior)
 
 
+def _has_financial_periods(
+    period_prior: str | None, period_latest: str | None, ticker: str
+) -> bool:
+    if period_prior is None or period_latest is None:
+        logger.warning(
+            "Missing financial periods for {ticker} (prior={prior}, latest={latest})",
+            ticker=ticker,
+            prior=period_prior,
+            latest=period_latest,
+        )
+        return False
+    return True
+
+
 def _evidence_metric_name(evidence_id: str) -> str:
     if "momentum" in evidence_id:
         return "Price momentum"
@@ -532,7 +546,15 @@ class ScreenerPipeline:
         evidence: list[ScreenerEvidence] = []
 
         capex_growth = _safe_growth_rate(financial.capex_latest, financial.capex_prior)
-        if capex_growth is not None:
+        net_income_growth = _safe_growth_rate(
+            financial.net_income_latest, financial.net_income_prior
+        )
+        periods_ok = True
+        if capex_growth is not None or net_income_growth is not None:
+            periods_ok = _has_financial_periods(
+                financial.period_prior, financial.period_latest, context.snapshot.ticker
+            )
+        if capex_growth is not None and periods_ok:
             capex_quote = (
                 f"Capex change {capex_growth:.2%} from {financial.period_prior} "
                 f"to {financial.period_latest}."
@@ -568,10 +590,7 @@ class ScreenerPipeline:
                 )
             )
 
-        net_income_growth = _safe_growth_rate(
-            financial.net_income_latest, financial.net_income_prior
-        )
-        if net_income_growth is not None:
+        if net_income_growth is not None and periods_ok:
             earnings_quote = (
                 f"Net income change {net_income_growth:.2%} from "
                 f"{financial.period_prior} to {financial.period_latest}."
