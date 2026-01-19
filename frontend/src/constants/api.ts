@@ -49,6 +49,14 @@ const SYSTEM_QUERY_KEYS = {
   strategyDetail: queryKeyFn(["system", "strategy", "detail"]),
 } as const;
 
+const SCREENER_QUERY_KEYS = {
+  runs: ["screener", "runs"],
+  runDetail: queryKeyFn(["screener", "run"]),
+  candidates: queryKeyFn(["screener", "candidates"]),
+  candidateDetail: queryKeyFn(["screener", "candidate"]),
+  export: queryKeyFn(["screener", "export"]),
+} as const;
+
 export const API_QUERY_KEYS = {
   STOCK: STOCK_QUERY_KEYS,
   AGENT: AGENT_QUERY_KEYS,
@@ -56,6 +64,7 @@ export const API_QUERY_KEYS = {
   SETTING: SETTING_QUERY_KEYS,
   STRATEGY: STRATEGY_QUERY_KEYS,
   SYSTEM: SYSTEM_QUERY_KEYS,
+  SCREENER: SCREENER_QUERY_KEYS,
 } as const;
 
 /**

@@ -95,6 +95,7 @@ export const AGENT_AVATAR_MAP: Record<string, string> = {
   TradingAgents: PortfolioManagerPng,
   SECAgent: SecAgentPng,
   NewsAgent: NewPushAgentPng,
+  QuantSelectionAgent: StrategyAgentPng,
 };
 
 export const VALUECELL_AGENT: AgentInfo = {

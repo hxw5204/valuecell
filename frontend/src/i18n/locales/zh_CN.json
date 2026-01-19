@@ -112,7 +112,50 @@
     "strategy": "策略",
     "ranking": "排行榜",
     "market": "市场",
+    "screener": "选股",
     "setting": "设置"
+  },
+  "screener": {
+    "title": "Stock Screener",
+    "subtitle": "运行广度到深度扫描，查看可追溯证据链。",
+    "frequency": {
+      "weekly": "每周",
+      "monthly": "每月",
+      "quarterly": "每季"
+    },
+    "runNow": "立即运行",
+    "running": "运行中...",
+    "export": "导出 CSV",
+    "history": {
+      "title": "运行历史",
+      "empty": "暂无运行记录。",
+      "candidates": "{{count}} 个候选"
+    },
+    "runSummary": {
+      "title": "运行摘要",
+      "universe": "样本规模",
+      "config": "配置哈希",
+      "git": "代码版本",
+      "frequency": "频率"
+    },
+    "candidates": {
+      "title": "候选池",
+      "rank": "排名",
+      "ticker": "代码",
+      "score": "总分",
+      "wide": "广度",
+      "deep": "深度",
+      "empty": "暂无候选。"
+    },
+    "detail": {
+      "title": "证据与逻辑",
+      "empty": "请选择候选以查看证据。",
+      "score": "得分",
+      "rationale": "入选理由",
+      "evidence": "证据链",
+      "noEvidence": "暂无证据。",
+      "logic": "逻辑图谱"
+    }
   },
   "updates": {
     "toast": {

@@ -1,0 +1,35 @@
+{
+    "name": "QuantSelectionAgent",
+    "display_name": "Quant Screener",
+    "url": "http://localhost:10006/",
+    "description": "QuantSelectionAgent runs the ValueCell Quant Screener (wide scan + deep evidence chain) and explains candidate rationale with evidence-backed logic graphs.",
+    "skills": [
+        {
+            "id": "run_screener",
+            "name": "Run quant screener",
+            "description": "Start a wide-to-deep screener run and persist local evidence artifacts.",
+            "examples": [
+                "Run the monthly screener and show the top candidates.",
+                "Start a weekly scan focused on underfollowed mid caps."
+            ],
+            "tags": ["screener", "quant", "wide-scan", "deep-dive"]
+        },
+        {
+            "id": "explain_candidate",
+            "name": "Explain candidate rationale",
+            "description": "Summarize a candidate's score breakdown and link to its evidence chain.",
+            "examples": [
+                "Explain why NVDA ranked in the top 5.",
+                "Show the evidence chain for ASML."
+            ],
+            "tags": ["evidence", "logic-graph", "explainability"]
+        }
+    ],
+    "enabled": true,
+    "metadata": {
+        "version": "0.1.0",
+        "author": "ValueCell Team",
+        "tags": ["quant", "screener"],
+        "local_agent_class": "valuecell.agents.quant_selection_agent.core:QuantSelectionAgent"
+    }
+}

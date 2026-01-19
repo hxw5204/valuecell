@@ -24,6 +24,7 @@ from .routers.agent_stream import create_agent_stream_router
 from .routers.conversation import create_conversation_router
 from .routers.i18n import create_i18n_router
 from .routers.models import create_models_router
+from .routers.screener import create_screener_router
 from .routers.strategy_api import create_strategy_api_router
 from .routers.system import create_system_router
 from .routers.task import create_task_router
@@ -229,6 +230,9 @@ def _add_routes(app: FastAPI, settings) -> None:
 
     # Include aggregated strategy API router (strategies + strategy agent)
     app.include_router(create_strategy_api_router(), prefix=API_PREFIX)
+
+    # Include screener router
+    app.include_router(create_screener_router(), prefix=API_PREFIX)
 
     # Include agent router
     app.include_router(create_agent_router(), prefix=API_PREFIX)

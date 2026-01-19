@@ -1,0 +1,1 @@
+"""Quant selection agent package."""

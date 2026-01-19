@@ -112,7 +112,50 @@
     "strategy": "戦略",
     "ranking": "ランキング",
     "market": "マーケット",
+    "screener": "スクリーナー",
     "setting": "設定"
+  },
+  "screener": {
+    "title": "Stock Screener",
+    "subtitle": "ワイドからディープまでスキャンし、根拠チェーンを確認します。",
+    "frequency": {
+      "weekly": "毎週",
+      "monthly": "毎月",
+      "quarterly": "毎四半期"
+    },
+    "runNow": "今すぐ実行",
+    "running": "実行中...",
+    "export": "CSV エクスポート",
+    "history": {
+      "title": "実行履歴",
+      "empty": "実行履歴はありません。",
+      "candidates": "{{count}} 件の候補"
+    },
+    "runSummary": {
+      "title": "実行サマリー",
+      "universe": "ユニバース規模",
+      "config": "設定ハッシュ",
+      "git": "コード版",
+      "frequency": "頻度"
+    },
+    "candidates": {
+      "title": "候補プール",
+      "rank": "順位",
+      "ticker": "ティッカー",
+      "score": "合計",
+      "wide": "ワイド",
+      "deep": "ディープ",
+      "empty": "候補がありません。"
+    },
+    "detail": {
+      "title": "根拠とロジック",
+      "empty": "候補を選択して根拠を確認してください。",
+      "score": "スコア",
+      "rationale": "選定理由",
+      "evidence": "根拠チェーン",
+      "noEvidence": "根拠はまだありません。",
+      "logic": "ロジックグラフ"
+    }
   },
   "updates": {
     "toast": {
