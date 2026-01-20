@@ -149,9 +149,7 @@ class ScreenerPipeline:
         exchange_allowlist = universe_config.get("exchange_allowlist", [])
         universe = asyncio.run(load_us_universe(exchange_allowlist))
         universe_map = {item.ticker: item for item in universe}
-        price_history = asyncio.run(
-            market_data.fetch_price_history(universe_map.keys())
-        )
+        price_history = market_data.fetch_price_history(universe_map.keys())
         asset_metadata = asyncio.run(
             market_data.fetch_asset_metadata(
                 universe_map.keys(),
