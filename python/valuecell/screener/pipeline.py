@@ -50,6 +50,7 @@ class CandidateContext:
 
     universe: UniverseTicker
     snapshot: market_data.PriceSnapshot
+    asset: market_data.AssetSnapshot | None
     wide: scoring.WideScoreResult
     deep: scoring.DeepScoreResult
     risk: scoring.RiskScoreResult
@@ -83,6 +84,8 @@ def _evidence_metric_name(evidence_id: str) -> str:
         return "Price momentum"
     if "liquidity" in evidence_id:
         return "Liquidity (dollar volume)"
+    if "profile" in evidence_id:
+        return "Market cap"
     if "capex" in evidence_id:
         return "Capex growth"
     if "earnings" in evidence_id:
@@ -92,6 +95,8 @@ def _evidence_metric_name(evidence_id: str) -> str:
 
 def _evidence_metric_unit(evidence_id: str) -> str:
     if "liquidity" in evidence_id:
+        return "usd"
+    if "profile" in evidence_id:
         return "usd"
     if "momentum" in evidence_id or "capex" in evidence_id or "earnings" in evidence_id:
         return "pct"
@@ -103,11 +108,31 @@ def _evidence_metric_value(evidence: ScreenerEvidence) -> float | None:
         return float(evidence.structured.get("return_20d", 0.0))
     if "liquidity" in evidence.evidence_id:
         return float(evidence.structured.get("dollar_volume_20d", 0.0))
+    if "profile" in evidence.evidence_id:
+        return float(evidence.structured.get("market_cap", 0.0))
     if "capex" in evidence.evidence_id:
         return float(evidence.structured.get("capex_growth", 0.0))
     if "earnings" in evidence.evidence_id:
         return float(evidence.structured.get("net_income_growth", 0.0))
     return None
+
+
+def _is_fund_like_name(name: str) -> bool:
+    if not name:
+        return False
+    keywords = (
+        "ETF",
+        "ETN",
+        "TRUST",
+        "FUND",
+        "MUTUAL",
+        "INDEX",
+        "ISHARES",
+        "PROSHARES",
+        "SPDR",
+    )
+    upper = name.upper()
+    return any(keyword in upper for keyword in keywords)
 
 
 class ScreenerPipeline:
@@ -126,8 +151,14 @@ class ScreenerPipeline:
         price_history = asyncio.run(
             market_data.fetch_price_history(universe_map.keys())
         )
+        asset_metadata = asyncio.run(
+            market_data.fetch_asset_metadata(universe_map.keys())
+        )
         price_snapshots = self._build_price_snapshots(
             universe_map, price_history, universe_config, config
+        )
+        price_snapshots = self._filter_asset_snapshots(
+            price_snapshots, universe_map, asset_metadata, universe_config
         )
         weights = config_payload.get("weights", {})
         wide_scores = scoring.score_wide(
@@ -154,6 +185,7 @@ class ScreenerPipeline:
             top_wide_tickers,
             universe_map,
             top_snapshots,
+            asset_metadata,
             wide_scores,
             deep_scores,
             risk_scores,
@@ -166,7 +198,9 @@ class ScreenerPipeline:
         )
         evaluation = self._build_evaluation()
         data_snapshot_hash = self._hash_payload(
-            self._snapshot_payload(universe, price_snapshots, financials)
+            self._snapshot_payload(
+                universe, price_snapshots, financials, asset_metadata
+            )
         )
         ended_at = datetime.now(timezone.utc)
         run_log = self._build_run_log(
@@ -241,6 +275,7 @@ class ScreenerPipeline:
         universe: Iterable[UniverseTicker],
         price_snapshots: Iterable[market_data.PriceSnapshot],
         financials: dict[str, market_data.FinancialSnapshot],
+        asset_metadata: dict[str, market_data.AssetSnapshot],
     ) -> dict:
         return {
             "universe": [item.ticker for item in universe],
@@ -251,6 +286,22 @@ class ScreenerPipeline:
                     "avg_volume_20d": snapshot.avg_volume_20d,
                     "return_20d": snapshot.return_20d,
                     "return_60d": snapshot.return_60d,
+                }
+                for snapshot in price_snapshots
+            ],
+            "asset_metadata": [
+                {
+                    "ticker": snapshot.ticker,
+                    "market_cap": (
+                        asset_metadata.get(snapshot.ticker).market_cap
+                        if asset_metadata.get(snapshot.ticker)
+                        else None
+                    ),
+                    "quote_type": (
+                        asset_metadata.get(snapshot.ticker).quote_type
+                        if asset_metadata.get(snapshot.ticker)
+                        else None
+                    ),
                 }
                 for snapshot in price_snapshots
             ],
@@ -276,6 +327,7 @@ class ScreenerPipeline:
     ) -> list[market_data.PriceSnapshot]:
         min_price = float(universe_config.get("min_price", 0.0))
         min_dollar_volume = float(universe_config.get("min_dollar_volume", 0.0))
+        min_avg_volume = float(universe_config.get("min_avg_volume_20d", 0.0))
         if config.liquidity_min is not None:
             min_dollar_volume = float(config.liquidity_min)
         snapshots: list[market_data.PriceSnapshot] = []
@@ -287,18 +339,73 @@ class ScreenerPipeline:
                 continue
             if snapshot.last_close < min_price:
                 continue
+            if snapshot.avg_volume_20d < min_avg_volume:
+                continue
             dollar_volume = snapshot.last_close * snapshot.avg_volume_20d
             if dollar_volume < min_dollar_volume:
                 continue
             snapshots.append(snapshot)
         logger.info(
             "Built {count} price snapshots (min_price={min_price}, "
-            "min_dollar_volume={min_dollar_volume})",
+            "min_dollar_volume={min_dollar_volume}, "
+            "min_avg_volume_20d={min_avg_volume})",
             count=len(snapshots),
             min_price=min_price,
             min_dollar_volume=min_dollar_volume,
+            min_avg_volume=min_avg_volume,
         )
         return snapshots
+
+    @staticmethod
+    def _filter_asset_snapshots(
+        snapshots: Iterable[market_data.PriceSnapshot],
+        universe_map: dict[str, UniverseTicker],
+        asset_metadata: dict[str, market_data.AssetSnapshot],
+        universe_config: dict,
+    ) -> list[market_data.PriceSnapshot]:
+        min_market_cap = float(universe_config.get("min_market_cap", 0.0))
+        asset_type_allowlist = [
+            str(item).upper()
+            for item in universe_config.get("asset_type_allowlist", [])
+        ]
+        exclude_fund_like = bool(
+            universe_config.get("exclude_fund_like_names", False)
+        )
+        filtered: list[market_data.PriceSnapshot] = []
+        removed_market_cap = 0
+        removed_type = 0
+        removed_name = 0
+        for snapshot in snapshots:
+            metadata = asset_metadata.get(snapshot.ticker)
+            if min_market_cap > 0:
+                market_cap = metadata.market_cap if metadata else None
+                if market_cap is None or market_cap < min_market_cap:
+                    removed_market_cap += 1
+                    continue
+            if asset_type_allowlist:
+                quote_type = (
+                    metadata.quote_type.upper()
+                    if metadata and metadata.quote_type
+                    else None
+                )
+                if quote_type is None or quote_type not in asset_type_allowlist:
+                    removed_type += 1
+                    continue
+            if exclude_fund_like:
+                universe = universe_map.get(snapshot.ticker)
+                if universe and _is_fund_like_name(universe.name):
+                    removed_name += 1
+                    continue
+            filtered.append(snapshot)
+        logger.info(
+            "Filtered snapshots by metadata (kept={kept}, removed_market_cap={cap}, "
+            "removed_type={type_removed}, removed_name={name_removed})",
+            kept=len(filtered),
+            cap=removed_market_cap,
+            type_removed=removed_type,
+            name_removed=removed_name,
+        )
+        return filtered
 
     @staticmethod
     def _select_top_wide(
@@ -313,6 +420,7 @@ class ScreenerPipeline:
         top_wide_tickers: list[str],
         universe_map: dict[str, UniverseTicker],
         snapshots: Iterable[market_data.PriceSnapshot],
+        asset_metadata: dict[str, market_data.AssetSnapshot],
         wide_scores: dict[str, scoring.WideScoreResult],
         deep_scores: dict[str, scoring.DeepScoreResult],
         risk_scores: dict[str, scoring.RiskScoreResult],
@@ -347,6 +455,7 @@ class ScreenerPipeline:
             contexts[ticker] = CandidateContext(
                 universe=universe,
                 snapshot=snapshot,
+                asset=asset_metadata.get(ticker),
                 wide=wide,
                 deep=deep,
                 risk=risk,
@@ -366,12 +475,19 @@ class ScreenerPipeline:
         )
         candidates: list[ScreenerCandidate] = []
         for index, context in enumerate(ranked[: config.top_n], 1):
-            total = context.wide.score + context.deep.score - context.risk.score
+            risk_penalty = max(context.risk.score, 0.0)
+            total = context.wide.score + context.deep.score - risk_penalty
+            risk_balance = max(
+                context.risk.components.get("balance_sheet", 0.0), 0.0
+            )
+            risk_volatility = max(
+                context.risk.components.get("volatility", 0.0), 0.0
+            )
             components = {
                 **context.wide.components,
                 **context.deep.components,
-                "risk_balance_sheet": -context.risk.components.get("balance_sheet", 0.0),
-                "risk_volatility": -context.risk.components.get("volatility", 0.0),
+                "risk_balance_sheet": -risk_balance,
+                "risk_volatility": -risk_volatility,
             }
             breakdown = ScreenerScoreBreakdown(
                 total_score=round(total, 4),
@@ -384,7 +500,7 @@ class ScreenerPipeline:
                     name=context.universe.name,
                     wide_score=round(context.wide.score, 4),
                     deep_score=round(context.deep.score, 4),
-                    risk_score=round(context.risk.score, 4),
+                    risk_score=round(risk_penalty, 4),
                     total_score=round(total, 4),
                     rank=index,
                     score_breakdown=breakdown,
@@ -395,10 +511,17 @@ class ScreenerPipeline:
 
     @staticmethod
     def _candidate_evidence_ids(context: CandidateContext) -> list[str]:
-        evidence_ids = [
-            f"ev_{context.snapshot.ticker.lower()}_momentum",
-            f"ev_{context.snapshot.ticker.lower()}_liquidity",
-        ]
+        evidence_ids = []
+        if context.asset and context.asset.market_cap is not None:
+            evidence_ids.append(
+                f"ev_{context.snapshot.ticker.lower()}_profile"
+            )
+        evidence_ids.extend(
+            [
+                f"ev_{context.snapshot.ticker.lower()}_momentum",
+                f"ev_{context.snapshot.ticker.lower()}_liquidity",
+            ]
+        )
         if context.financial:
             capex_growth = _safe_growth_rate(
                 context.financial.capex_latest, context.financial.capex_prior
@@ -461,6 +584,36 @@ class ScreenerPipeline:
         symbol = snapshot.symbol
         source_url = f"https://finance.yahoo.com/quote/{symbol}"
         evidence: list[ScreenerEvidence] = []
+
+        if context.asset and context.asset.market_cap is not None:
+            profile_quote = (
+                f"Market cap {context.asset.market_cap:,.0f} as of "
+                f"{snapshot.data_end.date().isoformat()}."
+            )
+            profile_structured = {
+                "market_cap": round(context.asset.market_cap, 2),
+                "quote_type": context.asset.quote_type or "unknown",
+            }
+            evidence.append(
+                ScreenerEvidence(
+                    evidence_id=f"ev_{context.snapshot.ticker.lower()}_profile",
+                    type="COMPANY_PROFILE",
+                    ticker=context.snapshot.ticker,
+                    published_at=snapshot.data_end,
+                    retrieved_at=retrieved_at,
+                    source_title="Company profile",
+                    source_name="Yahoo Finance",
+                    source_url=source_url,
+                    publisher="Yahoo Finance",
+                    reliability_level="secondary",
+                    doc_ref={"dataset": "company_profile"},
+                    quote=profile_quote,
+                    structured=profile_structured,
+                    sha256=self._hash_payload(
+                        {"quote": profile_quote, "structured": profile_structured}
+                    ),
+                )
+            )
 
         momentum_quote = (
             f"20D return {snapshot.return_20d:.2%}, "
@@ -760,6 +913,7 @@ class ScreenerPipeline:
                 outputs=[
                     f"price_snapshots={data_points}",
                     "scoring=wide+deep-risk",
+                    f"filters={config_payload.get('universe', {})}",
                 ],
                 notes="Wide scan uses price + volume + financials for scoring.",
             ),
