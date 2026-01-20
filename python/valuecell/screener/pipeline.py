@@ -160,8 +160,8 @@ class ScreenerPipeline:
         asset_metadata = asyncio.run(
             market_data.fetch_asset_metadata(
                 universe_map.keys(),
-                max_concurrency=2,
-                delay_s=0.2,
+                max_concurrency=1,
+                delay_s=0.5,
             )
         )
         price_snapshots = self._filter_asset_snapshots(

@@ -170,7 +170,7 @@ def build_price_snapshot(ticker: str, df: pd.DataFrame) -> PriceSnapshot | None:
 
 async def fetch_financial_snapshots(
     tickers: Iterable[str],
-    max_concurrency: int = 5,
+    max_concurrency: int = 1,
 ) -> dict[str, FinancialSnapshot]:
     tickers_list = list(tickers)
     if not tickers_list:
@@ -187,7 +187,7 @@ async def fetch_financial_snapshots(
 
 async def fetch_asset_metadata(
     tickers: Iterable[str],
-    max_concurrency: int = 5,
+    max_concurrency: int = 1,
     delay_s: float = 0.0,
 ) -> dict[str, AssetSnapshot]:
     tickers_list = list(tickers)
