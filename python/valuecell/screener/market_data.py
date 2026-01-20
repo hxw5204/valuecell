@@ -92,10 +92,34 @@ def _download_prices(symbols: list[str], period_days: int) -> pd.DataFrame:
     )
 
 
+def _apply_download_results(
+    data: pd.DataFrame,
+    batch: list[str],
+    symbols: list[str],
+    results: dict[str, pd.DataFrame],
+) -> None:
+    if data.empty:
+        return
+    if isinstance(data.columns, pd.MultiIndex):
+        for symbol in symbols:
+            if symbol not in data.columns.get_level_values(0):
+                continue
+            df = data[symbol].dropna()
+            if not df.empty:
+                results[_symbol_to_ticker(batch, symbol)] = df
+    else:
+        df = data.dropna()
+        if df.empty:
+            return
+        symbol = symbols[0]
+        results[_symbol_to_ticker(batch, symbol)] = df
+
+
 async def fetch_price_history(
     tickers: Iterable[str],
     period_days: int = 120,
     batch_size: int = 200,
+    max_retries: int = constants.PRICE_HISTORY_MAX_RETRIES,
 ) -> dict[str, pd.DataFrame]:
     tickers_list = list(tickers)
     if not tickers_list:
@@ -104,31 +128,30 @@ async def fetch_price_history(
     for start in range(0, len(tickers_list), batch_size):
         batch = tickers_list[start : start + batch_size]
         symbols = [_split_symbol(ticker) for ticker in batch]
-        try:
-            data = await asyncio.to_thread(_download_prices, symbols, period_days)
-        except Exception as exc:
+        data = pd.DataFrame()
+        for attempt in range(1, max_retries + 1):
+            try:
+                data = _download_prices(symbols, period_days)
+                break
+            except Exception as exc:
+                logger.warning(
+                    "Failed to fetch price history for batch {start}-{end} "
+                    "on attempt {attempt}/{max_retries}: {error}",
+                    start=start,
+                    end=min(start + batch_size, len(tickers_list)),
+                    attempt=attempt,
+                    max_retries=max_retries,
+                    error=exc,
+                )
+        if data.empty:
             logger.warning(
-                "Failed to fetch price history for batch {start}-{end}: {error}",
+                "Skipping remaining batches after failure to fetch price history for "
+                "batch {start}-{end}",
                 start=start,
                 end=min(start + batch_size, len(tickers_list)),
-                error=exc,
             )
-            continue
-        if data.empty:
-            continue
-        if isinstance(data.columns, pd.MultiIndex):
-            for symbol in symbols:
-                if symbol not in data.columns.get_level_values(0):
-                    continue
-                df = data[symbol].dropna()
-                if not df.empty:
-                    results[_symbol_to_ticker(batch, symbol)] = df
-        else:
-            df = data.dropna()
-            if df.empty:
-                continue
-            symbol = symbols[0]
-            results[_symbol_to_ticker(batch, symbol)] = df
+            break
+        _apply_download_results(data, batch, symbols, results)
         logger.info(
             "Fetched price history for batch {start}-{end} ({count} symbols)",
             start=start,
