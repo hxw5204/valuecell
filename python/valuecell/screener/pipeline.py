@@ -157,6 +157,13 @@ class ScreenerPipeline:
         price_snapshots = self._build_price_snapshots(
             universe_map, price_history, universe_config, config
         )
+        asset_metadata = asyncio.run(
+            market_data.fetch_asset_metadata(
+                universe_map.keys(),
+                max_concurrency=2,
+                delay_s=0.2,
+            )
+        )
         price_snapshots = self._filter_asset_snapshots(
             price_snapshots, universe_map, asset_metadata, universe_config
         )

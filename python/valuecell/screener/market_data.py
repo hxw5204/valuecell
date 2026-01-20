@@ -188,12 +188,16 @@ async def fetch_financial_snapshots(
 async def fetch_asset_metadata(
     tickers: Iterable[str],
     max_concurrency: int = 5,
+    delay_s: float = 0.0,
 ) -> dict[str, AssetSnapshot]:
     tickers_list = list(tickers)
     if not tickers_list:
         return {}
     semaphore = asyncio.Semaphore(max_concurrency)
-    tasks = [_fetch_asset_metadata(ticker, semaphore) for ticker in tickers_list]
+    tasks = [
+        _fetch_asset_metadata(ticker, semaphore, delay_s)
+        for ticker in tickers_list
+    ]
     results = await asyncio.gather(*tasks)
     metadata: dict[str, AssetSnapshot] = {}
     for snapshot in results:
@@ -256,9 +260,11 @@ def _fetch_financial_snapshot_sync(ticker: str) -> FinancialSnapshot | None:
 
 
 async def _fetch_asset_metadata(
-    ticker: str, semaphore: asyncio.Semaphore
+    ticker: str, semaphore: asyncio.Semaphore, delay_s: float
 ) -> AssetSnapshot | None:
     async with semaphore:
+        if delay_s > 0:
+            await asyncio.sleep(delay_s)
         return await asyncio.to_thread(_fetch_asset_metadata_sync, ticker)
 
 
