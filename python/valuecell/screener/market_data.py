@@ -30,6 +30,15 @@ class PriceSnapshot:
 
 
 @dataclass(frozen=True)
+class AssetSnapshot:
+    """Metadata snapshot for assets used in screening filters."""
+
+    ticker: str
+    market_cap: float | None
+    quote_type: str | None
+
+
+@dataclass(frozen=True)
 class FinancialSnapshot:
     """Key financial statement snapshots for deep scoring."""
 
@@ -176,6 +185,27 @@ async def fetch_financial_snapshots(
     return snapshots
 
 
+async def fetch_asset_metadata(
+    tickers: Iterable[str],
+    max_concurrency: int = 5,
+    delay_s: float = 0.0,
+) -> dict[str, AssetSnapshot]:
+    tickers_list = list(tickers)
+    if not tickers_list:
+        return {}
+    semaphore = asyncio.Semaphore(max_concurrency)
+    tasks = [
+        _fetch_asset_metadata(ticker, semaphore, delay_s)
+        for ticker in tickers_list
+    ]
+    results = await asyncio.gather(*tasks)
+    metadata: dict[str, AssetSnapshot] = {}
+    for snapshot in results:
+        if snapshot:
+            metadata[snapshot.ticker] = snapshot
+    return metadata
+
+
 async def _fetch_financial_snapshot(
     ticker: str, semaphore: asyncio.Semaphore
 ) -> FinancialSnapshot | None:
@@ -226,6 +256,37 @@ def _fetch_financial_snapshot_sync(ticker: str) -> FinancialSnapshot | None:
         net_income_prior=net_income_prior,
         period_latest=period_latest,
         period_prior=period_prior,
+    )
+
+
+async def _fetch_asset_metadata(
+    ticker: str, semaphore: asyncio.Semaphore, delay_s: float
+) -> AssetSnapshot | None:
+    async with semaphore:
+        if delay_s > 0:
+            await asyncio.sleep(delay_s)
+        return await asyncio.to_thread(_fetch_asset_metadata_sync, ticker)
+
+
+def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
+    symbol = _split_symbol(ticker)
+    yf_ticker = yf.Ticker(symbol)
+    try:
+        info = yf_ticker.get_info()
+    except Exception as exc:
+        logger.warning(
+            "Failed to load asset metadata for {ticker}: {error}",
+            ticker=ticker,
+            error=exc,
+        )
+        return None
+    market_cap_raw = info.get("marketCap")
+    market_cap = float(market_cap_raw) if market_cap_raw is not None else None
+    quote_type = info.get("quoteType") or info.get("quote_type")
+    return AssetSnapshot(
+        ticker=ticker,
+        market_cap=market_cap,
+        quote_type=str(quote_type) if quote_type else None,
     )
 
 
