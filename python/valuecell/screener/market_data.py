@@ -115,7 +115,7 @@ def _apply_download_results(
         results[_symbol_to_ticker(batch, symbol)] = df
 
 
-async def fetch_price_history(
+def fetch_price_history(
     tickers: Iterable[str],
     period_days: int = 120,
     batch_size: int = 200,
@@ -326,15 +326,22 @@ async def _fetch_asset_metadata(
 def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
     symbol = _split_symbol(ticker)
     yf_ticker = yf.Ticker(symbol)
-    try:
-        info = yf_ticker.get_info()
-    except Exception as exc:
-        logger.warning(
-            "Failed to load asset metadata for {ticker} via info: {error}",
-            ticker=ticker,
-            error=exc,
-        )
-        return _fetch_asset_metadata_fast(ticker, yf_ticker)
+    info: dict | None = None
+    for attempt in range(1, constants.METADATA_MAX_RETRIES + 1):
+        try:
+            info = yf_ticker.get_info()
+            break
+        except Exception as exc:
+            logger.warning(
+                "Failed to load asset metadata for {ticker} via info on "
+                "attempt {attempt}/{max_retries}: {error}",
+                ticker=ticker,
+                attempt=attempt,
+                max_retries=constants.METADATA_MAX_RETRIES,
+                error=exc,
+            )
+            if attempt < constants.METADATA_MAX_RETRIES:
+                time.sleep(constants.METADATA_RETRY_BACKOFF_S * attempt)
     if not isinstance(info, dict) or not info:
         logger.warning("No asset metadata returned for {ticker}", ticker=ticker)
         return _fetch_asset_metadata_fast(ticker, yf_ticker)
