@@ -307,22 +307,43 @@ def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
         info = yf_ticker.get_info()
     except Exception as exc:
         logger.warning(
-            "Failed to load asset metadata for {ticker}: {error}",
+            "Failed to load asset metadata for {ticker} via info: {error}",
             ticker=ticker,
             error=exc,
         )
-        return None
-    if not info:
+        return _fetch_asset_metadata_fast(ticker, yf_ticker)
+    if not isinstance(info, dict) or not info:
         logger.warning("No asset metadata returned for {ticker}", ticker=ticker)
-        return AssetSnapshot(ticker=ticker, market_cap=None, quote_type=None)
-    market_cap_raw = info.get("marketCap")
-    market_cap = float(market_cap_raw) if market_cap_raw is not None else None
+        return _fetch_asset_metadata_fast(ticker, yf_ticker)
+    market_cap = _normalize_market_cap(info.get("marketCap"))
     quote_type = info.get("quoteType") or info.get("quote_type")
     return AssetSnapshot(
         ticker=ticker,
         market_cap=market_cap,
         quote_type=str(quote_type) if quote_type else None,
     )
+
+
+def _fetch_asset_metadata_fast(
+    ticker: str, yf_ticker: yf.Ticker
+) -> AssetSnapshot | None:
+    try:
+        fast_info = yf_ticker.fast_info
+    except Exception as exc:
+        logger.warning(
+            "Failed to load asset metadata for {ticker} via fast_info: {error}",
+            ticker=ticker,
+            error=exc,
+        )
+        return None
+    market_cap = _normalize_market_cap(getattr(fast_info, "market_cap", None))
+    return AssetSnapshot(ticker=ticker, market_cap=market_cap, quote_type=None)
+
+
+def _normalize_market_cap(raw_value: float | int | None) -> float | None:
+    if raw_value is None:
+        return None
+    return float(raw_value)
 
 
 def _extract_financial_series(
