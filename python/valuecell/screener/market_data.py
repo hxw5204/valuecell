@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable
@@ -10,6 +11,8 @@ from typing import Iterable
 import pandas as pd
 import yfinance as yf
 from loguru import logger
+
+from . import constants
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,25 @@ class FinancialSnapshot:
     net_income_prior: float | None
     period_latest: str | None
     period_prior: str | None
+
+
+class AsyncRateLimiter:
+    """Ensure a minimum interval between external requests."""
+
+    def __init__(self, min_interval_s: float) -> None:
+        self._min_interval_s = min_interval_s
+        self._lock = asyncio.Lock()
+        self._last_call = 0.0
+
+    async def wait(self) -> None:
+        if self._min_interval_s <= 0:
+            return
+        async with self._lock:
+            now = time.monotonic()
+            wait_for = self._min_interval_s - (now - self._last_call)
+            if wait_for > 0:
+                await asyncio.sleep(wait_for)
+            self._last_call = time.monotonic()
 
 
 def _split_symbol(ticker: str) -> str:
@@ -170,13 +192,18 @@ def build_price_snapshot(ticker: str, df: pd.DataFrame) -> PriceSnapshot | None:
 
 async def fetch_financial_snapshots(
     tickers: Iterable[str],
-    max_concurrency: int = 1,
+    max_concurrency: int = constants.FINANCIAL_MAX_CONCURRENCY,
+    min_interval_s: float = constants.FINANCIAL_MIN_INTERVAL_S,
 ) -> dict[str, FinancialSnapshot]:
     tickers_list = list(tickers)
     if not tickers_list:
         return {}
     semaphore = asyncio.Semaphore(max_concurrency)
-    tasks = [_fetch_financial_snapshot(ticker, semaphore) for ticker in tickers_list]
+    limiter = AsyncRateLimiter(min_interval_s)
+    tasks = [
+        _fetch_financial_snapshot(ticker, semaphore, limiter)
+        for ticker in tickers_list
+    ]
     results = await asyncio.gather(*tasks)
     snapshots: dict[str, FinancialSnapshot] = {}
     for snapshot in results:
@@ -187,15 +214,16 @@ async def fetch_financial_snapshots(
 
 async def fetch_asset_metadata(
     tickers: Iterable[str],
-    max_concurrency: int = 1,
-    delay_s: float = 0.0,
+    max_concurrency: int = constants.METADATA_MAX_CONCURRENCY,
+    min_interval_s: float = constants.METADATA_MIN_INTERVAL_S,
 ) -> dict[str, AssetSnapshot]:
     tickers_list = list(tickers)
     if not tickers_list:
         return {}
     semaphore = asyncio.Semaphore(max_concurrency)
+    limiter = AsyncRateLimiter(min_interval_s)
     tasks = [
-        _fetch_asset_metadata(ticker, semaphore, delay_s)
+        _fetch_asset_metadata(ticker, semaphore, limiter)
         for ticker in tickers_list
     ]
     results = await asyncio.gather(*tasks)
@@ -207,9 +235,12 @@ async def fetch_asset_metadata(
 
 
 async def _fetch_financial_snapshot(
-    ticker: str, semaphore: asyncio.Semaphore
+    ticker: str,
+    semaphore: asyncio.Semaphore,
+    limiter: AsyncRateLimiter,
 ) -> FinancialSnapshot | None:
     async with semaphore:
+        await limiter.wait()
         return await asyncio.to_thread(_fetch_financial_snapshot_sync, ticker)
 
 
@@ -260,11 +291,12 @@ def _fetch_financial_snapshot_sync(ticker: str) -> FinancialSnapshot | None:
 
 
 async def _fetch_asset_metadata(
-    ticker: str, semaphore: asyncio.Semaphore, delay_s: float
+    ticker: str,
+    semaphore: asyncio.Semaphore,
+    limiter: AsyncRateLimiter,
 ) -> AssetSnapshot | None:
     async with semaphore:
-        if delay_s > 0:
-            await asyncio.sleep(delay_s)
+        await limiter.wait()
         return await asyncio.to_thread(_fetch_asset_metadata_sync, ticker)
 
 
@@ -275,19 +307,43 @@ def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
         info = yf_ticker.get_info()
     except Exception as exc:
         logger.warning(
-            "Failed to load asset metadata for {ticker}: {error}",
+            "Failed to load asset metadata for {ticker} via info: {error}",
             ticker=ticker,
             error=exc,
         )
-        return None
-    market_cap_raw = info.get("marketCap")
-    market_cap = float(market_cap_raw) if market_cap_raw is not None else None
+        return _fetch_asset_metadata_fast(ticker, yf_ticker)
+    if not isinstance(info, dict) or not info:
+        logger.warning("No asset metadata returned for {ticker}", ticker=ticker)
+        return _fetch_asset_metadata_fast(ticker, yf_ticker)
+    market_cap = _normalize_market_cap(info.get("marketCap"))
     quote_type = info.get("quoteType") or info.get("quote_type")
     return AssetSnapshot(
         ticker=ticker,
         market_cap=market_cap,
         quote_type=str(quote_type) if quote_type else None,
     )
+
+
+def _fetch_asset_metadata_fast(
+    ticker: str, yf_ticker: yf.Ticker
+) -> AssetSnapshot | None:
+    try:
+        fast_info = yf_ticker.fast_info
+    except Exception as exc:
+        logger.warning(
+            "Failed to load asset metadata for {ticker} via fast_info: {error}",
+            ticker=ticker,
+            error=exc,
+        )
+        return None
+    market_cap = _normalize_market_cap(getattr(fast_info, "market_cap", None))
+    return AssetSnapshot(ticker=ticker, market_cap=market_cap, quote_type=None)
+
+
+def _normalize_market_cap(raw_value: float | int | None) -> float | None:
+    if raw_value is None:
+        return None
+    return float(raw_value)
 
 
 def _extract_financial_series(
