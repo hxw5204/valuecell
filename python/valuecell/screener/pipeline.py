@@ -14,6 +14,7 @@ from loguru import logger
 
 from valuecell.utils.uuid import generate_uuid
 
+from . import constants
 from .config import load_screener_config
 from . import market_data
 from . import scoring
@@ -152,17 +153,14 @@ class ScreenerPipeline:
             market_data.fetch_price_history(universe_map.keys())
         )
         asset_metadata = asyncio.run(
-            market_data.fetch_asset_metadata(universe_map.keys())
+            market_data.fetch_asset_metadata(
+                universe_map.keys(),
+                max_concurrency=constants.METADATA_MAX_CONCURRENCY,
+                min_interval_s=constants.METADATA_MIN_INTERVAL_S,
+            )
         )
         price_snapshots = self._build_price_snapshots(
             universe_map, price_history, universe_config, config
-        )
-        asset_metadata = asyncio.run(
-            market_data.fetch_asset_metadata(
-                universe_map.keys(),
-                max_concurrency=2,
-                delay_s=0.2,
-            )
         )
         price_snapshots = self._filter_asset_snapshots(
             price_snapshots, universe_map, asset_metadata, universe_config
@@ -174,19 +172,24 @@ class ScreenerPipeline:
         top_wide_tickers = self._select_top_wide(
             wide_scores, config.top_k
         )
+        filtered_tickers = [snapshot.ticker for snapshot in price_snapshots]
         top_snapshots = [
             snapshot
             for snapshot in price_snapshots
             if snapshot.ticker in top_wide_tickers
         ]
         financials = asyncio.run(
-            market_data.fetch_financial_snapshots(top_wide_tickers)
+            market_data.fetch_financial_snapshots(
+                filtered_tickers,
+                max_concurrency=constants.FINANCIAL_MAX_CONCURRENCY,
+                min_interval_s=constants.FINANCIAL_MIN_INTERVAL_S,
+            )
         )
         deep_scores = scoring.score_deep(
-            top_snapshots, financials, weights.get("deep", {})
+            price_snapshots, financials, weights.get("deep", {})
         )
         risk_scores = scoring.score_risk(
-            top_snapshots, weights.get("risk", {})
+            price_snapshots, weights.get("risk", {})
         )
         contexts = self._build_candidate_contexts(
             top_wide_tickers,
