@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -62,6 +63,7 @@ export default function ScreenerPage() {
     useState<ScreenerRunConfig["frequency"]>("monthly");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
   const { data: runs = [] } = useGetScreenerRuns();
   const { data: runDetail } = useGetScreenerRun(selectedRunId);
   const { data: candidates = [], isLoading: candidatesLoading } =
@@ -93,6 +95,22 @@ export default function ScreenerPage() {
       setSelectedTicker(candidates[0].ticker);
     }
   }, [candidates, selectedTicker]);
+
+  useEffect(() => {
+    if (!isPending) {
+      setProgress(0);
+      return;
+    }
+    setProgress(5);
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 95) return prev;
+        const increment = 0.5 + Math.random() * 1.5;
+        return Math.min(prev + increment, 95);
+      });
+    }, 200);
+    return () => clearInterval(interval);
+  }, [isPending]);
 
   const handleRun = async () => {
     const response = await runScreener({ frequency });
@@ -170,6 +188,16 @@ export default function ScreenerPage() {
           </Button>
         </div>
       </div>
+
+      {isPending && (
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center justify-between text-muted-foreground text-xs uppercase tracking-wide">
+            <span>{t("common.loading")}</span>
+            <span>{Math.round(progress)}%</span>
+          </div>
+          <Progress value={progress} className="mt-2 h-2 w-full" />
+        </div>
+      )}
 
       <div className="grid flex-1 grid-cols-1 gap-6 overflow-hidden lg:grid-cols-[300px_1fr]">
         <Card className="flex h-full flex-col">
