@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +21,8 @@ SEC_TICKER_EXCHANGE_URL: str = (
 )
 UNIVERSE_CACHE_TTL_DAYS: int = 7
 SEC_USER_AGENT: str = "ValueCellQuantScreener/0.1 (research@valuecell.ai)"
+SEC_FETCH_MAX_RETRIES: int = 3
+SEC_FETCH_RETRY_BACKOFF_S: float = 1.5
 
 _EXCHANGE_NORMALIZATION: dict[str, str] = {
     "nasdaq": "NASDAQ",
@@ -61,14 +64,45 @@ def _is_cache_fresh(path: Path, ttl_days: int) -> bool:
     return datetime.now(timezone.utc) - mtime < timedelta(days=ttl_days)
 
 
-async def _fetch_sec_universe() -> dict:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(
-            SEC_TICKER_EXCHANGE_URL,
-            headers={"User-Agent": SEC_USER_AGENT},
+def _fetch_sec_universe() -> dict:
+    last_error: Exception | None = None
+    for attempt in range(1, SEC_FETCH_MAX_RETRIES + 1):
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.get(
+                    SEC_TICKER_EXCHANGE_URL,
+                    headers={"User-Agent": SEC_USER_AGENT},
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Failed to fetch SEC universe on attempt {attempt}/{max_retries}: {error}",
+                attempt=attempt,
+                max_retries=SEC_FETCH_MAX_RETRIES,
+                error=exc,
+            )
+            if attempt < SEC_FETCH_MAX_RETRIES:
+                time.sleep(SEC_FETCH_RETRY_BACKOFF_S * attempt)
+    logger.debug(
+        "SEC universe fetch failed after {max_retries} attempts. "
+        "URL={url} user_agent={user_agent} error={error}",
+        max_retries=SEC_FETCH_MAX_RETRIES,
+        url=SEC_TICKER_EXCHANGE_URL,
+        user_agent=SEC_USER_AGENT,
+        error=last_error,
+    )
+    print(
+        "SEC universe fetch failed after {max_retries} attempts. "
+        "URL={url} user_agent={user_agent} error={error}".format(
+            max_retries=SEC_FETCH_MAX_RETRIES,
+            url=SEC_TICKER_EXCHANGE_URL,
+            user_agent=SEC_USER_AGENT,
+            error=last_error,
         )
-        response.raise_for_status()
-        return response.json()
+    )
+    raise RuntimeError("SEC universe fetch failed") from last_error
 
 
 def _normalize_exchange(exchange: str) -> str | None:
@@ -148,7 +182,7 @@ def _parse_universe(payload: dict, allowlist: set[str]) -> list[UniverseTicker]:
     return _dedupe_universe(entries)
 
 
-async def load_us_universe(
+def load_us_universe(
     allowlist: list[str],
     ttl_days: int = UNIVERSE_CACHE_TTL_DAYS,
 ) -> list[UniverseTicker]:
@@ -168,7 +202,7 @@ async def load_us_universe(
             payload = None
     if payload is None:
         try:
-            payload = await _fetch_sec_universe()
+            payload = _fetch_sec_universe()
             cache_path.write_text(
                 json.dumps(payload, indent=2, ensure_ascii=False),
                 encoding="utf-8",
