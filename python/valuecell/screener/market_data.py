@@ -368,6 +368,13 @@ def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
                 max_retries=constants.METADATA_MAX_RETRIES,
                 error=exc,
             )
+            if _is_rate_limited_error(exc):
+                _log_and_print_warning(
+                    "Rate limited while fetching asset metadata for {ticker} "
+                    "via info; falling back to fast_info",
+                    ticker=ticker,
+                )
+                break
         if attempt < constants.METADATA_MAX_RETRIES:
             time.sleep(constants.METADATA_RETRY_BACKOFF_S * attempt)
     if not isinstance(info, dict) or not info:
@@ -412,6 +419,15 @@ def _normalize_market_cap(raw_value: float | int | None) -> float | None:
     if raw_value is None:
         return None
     return float(raw_value)
+
+
+def _is_rate_limited_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return (
+        "too many requests" in message
+        or "rate limited" in message
+        or "429" in message
+    )
 
 
 def _extract_financial_series(
