@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Iterable
 
 import pandas as pd
@@ -12,6 +13,7 @@ import yfinance as yf
 from loguru import logger
 
 from . import constants
+from valuecell.adapters.assets.manager import AdapterManager
 
 
 @dataclass(frozen=True)
@@ -389,7 +391,11 @@ def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
                 ticker=ticker,
                 error=last_error,
             )
-        return _fetch_asset_metadata_fast(ticker, yf_ticker)
+        return _fetch_asset_metadata_after_yfinance_failure(
+            ticker=ticker,
+            yf_ticker=yf_ticker,
+            last_error=last_error,
+        )
     market_cap = _normalize_market_cap(info.get("marketCap"))
     quote_type = info.get("quoteType") or info.get("quote_type")
     return AssetSnapshot(
@@ -415,7 +421,41 @@ def _fetch_asset_metadata_fast(
     return AssetSnapshot(ticker=ticker, market_cap=market_cap, quote_type=None)
 
 
-def _normalize_market_cap(raw_value: float | int | None) -> float | None:
+def _fetch_asset_metadata_after_yfinance_failure(
+    ticker: str,
+    yf_ticker: yf.Ticker,
+    last_error: Exception | None,
+) -> AssetSnapshot | None:
+    snapshot = _fetch_asset_metadata_fast(ticker, yf_ticker)
+    if snapshot is not None:
+        return snapshot
+    return _fetch_asset_metadata_from_free_providers(ticker, last_error)
+
+
+def _fetch_asset_metadata_from_free_providers(
+    ticker: str, last_error: Exception | None
+) -> AssetSnapshot | None:
+    adapter_manager = AdapterManager()
+    adapter_manager.configure_akshare()
+    adapter_manager.configure_baostock()
+    asset = adapter_manager.get_asset_info(ticker)
+    if asset is None:
+        _log_and_print_warning(
+            "Fallback asset metadata lookup failed for {ticker} after yfinance "
+            "errors: {error}",
+            ticker=ticker,
+            error=last_error or "unknown error",
+        )
+        return None
+    market_cap_raw = asset.get_property("market_cap")
+    return AssetSnapshot(
+        ticker=ticker,
+        market_cap=_normalize_market_cap(market_cap_raw),
+        quote_type=asset.asset_type.value if asset.asset_type else None,
+    )
+
+
+def _normalize_market_cap(raw_value: float | int | Decimal | None) -> float | None:
     if raw_value is None:
         return None
     return float(raw_value)
