@@ -347,9 +347,10 @@ def _fetch_asset_metadata(
     limiter: RateLimiter,
 ) -> AssetSnapshot | None:
     snapshot: AssetSnapshot | None = None
+    last_error: Exception | None = None
     for attempt in range(1, max_retries + 1):
         limiter.wait()
-        snapshot = _fetch_asset_metadata_sync(ticker)
+        snapshot, last_error = _fetch_asset_metadata_sync(ticker)
         if snapshot is not None:
             break
         _log_and_print_warning(
@@ -365,6 +366,12 @@ def _fetch_asset_metadata(
             ticker=ticker,
             max_retries=max_retries,
         )
+        fallback_snapshot = _fetch_asset_metadata_after_yfinance_failure(
+            ticker=ticker,
+            last_error=last_error,
+        )
+        if fallback_snapshot is not None:
+            return fallback_snapshot
     return snapshot
 
 
@@ -414,7 +421,9 @@ def _fetch_financial_snapshot_sync(ticker: str) -> FinancialSnapshot | None:
     )
 
 
-def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
+def _fetch_asset_metadata_sync(
+    ticker: str,
+) -> tuple[AssetSnapshot | None, Exception | None]:
     symbol = _split_symbol(ticker)
     yf_ticker = yf.Ticker(symbol)
     info: dict | None = None
@@ -462,17 +471,16 @@ def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
                 ticker=ticker,
                 error=last_error,
             )
-        return _fetch_asset_metadata_after_yfinance_failure(
-            ticker=ticker,
-            yf_ticker=yf_ticker,
-            last_error=last_error,
-        )
+        return None, last_error
     market_cap = _normalize_market_cap(info.get("marketCap"))
     quote_type = info.get("quoteType") or info.get("quote_type")
-    return AssetSnapshot(
-        ticker=ticker,
-        market_cap=market_cap,
-        quote_type=str(quote_type) if quote_type else None,
+    return (
+        AssetSnapshot(
+            ticker=ticker,
+            market_cap=market_cap,
+            quote_type=str(quote_type) if quote_type else None,
+        ),
+        None,
     )
 
 
@@ -494,9 +502,10 @@ def _fetch_asset_metadata_fast(
 
 def _fetch_asset_metadata_after_yfinance_failure(
     ticker: str,
-    yf_ticker: yf.Ticker,
     last_error: Exception | None,
 ) -> AssetSnapshot | None:
+    symbol = _split_symbol(ticker)
+    yf_ticker = yf.Ticker(symbol)
     snapshot = _fetch_asset_metadata_fast(ticker, yf_ticker)
     if snapshot is not None:
         return snapshot
