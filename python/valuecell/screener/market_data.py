@@ -376,11 +376,7 @@ def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
                     "via info; falling back to fast_info",
                     ticker=ticker,
                 )
-                return _fetch_asset_metadata_after_yfinance_failure(
-                    ticker=ticker,
-                    yf_ticker=yf_ticker,
-                    last_error=last_error,
-                )
+                break
         if attempt < constants.METADATA_MAX_RETRIES:
             time.sleep(constants.METADATA_RETRY_BACKOFF_S * attempt)
     if not isinstance(info, dict) or not info:
