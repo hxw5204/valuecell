@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -56,23 +55,26 @@ class FinancialSnapshot:
     period_prior: str | None
 
 
-class AsyncRateLimiter:
+class RateLimiter:
     """Ensure a minimum interval between external requests."""
 
     def __init__(self, min_interval_s: float) -> None:
         self._min_interval_s = min_interval_s
-        self._lock = asyncio.Lock()
         self._last_call = 0.0
 
-    async def wait(self) -> None:
+    def wait(self) -> None:
         if self._min_interval_s <= 0:
             return
-        async with self._lock:
-            now = time.monotonic()
-            wait_for = self._min_interval_s - (now - self._last_call)
-            if wait_for > 0:
-                await asyncio.sleep(wait_for)
-            self._last_call = time.monotonic()
+        now = time.monotonic()
+        wait_for = self._min_interval_s - (now - self._last_call)
+        if wait_for > 0:
+            time.sleep(wait_for)
+        self._last_call = time.monotonic()
+
+
+def _log_and_print_warning(message: str, **kwargs: object) -> None:
+    logger.warning(message, **kwargs)
+    print(message.format(**kwargs))
 
 
 def _split_symbol(ticker: str) -> str:
@@ -134,7 +136,7 @@ def fetch_price_history(
                 data = _download_prices(symbols, period_days)
                 break
             except Exception as exc:
-                logger.warning(
+                _log_and_print_warning(
                     "Failed to fetch price history for batch {start}-{end} "
                     "on attempt {attempt}/{max_retries}: {error}",
                     start=start,
@@ -144,7 +146,7 @@ def fetch_price_history(
                     error=exc,
                 )
         if data.empty:
-            logger.warning(
+            _log_and_print_warning(
                 "Skipping remaining batches after failure to fetch price history for "
                 "batch {start}-{end}",
                 start=start,
@@ -213,58 +215,84 @@ def build_price_snapshot(ticker: str, df: pd.DataFrame) -> PriceSnapshot | None:
     )
 
 
-async def fetch_financial_snapshots(
+def fetch_financial_snapshots(
     tickers: Iterable[str],
-    max_concurrency: int = constants.FINANCIAL_MAX_CONCURRENCY,
+    max_retries: int = constants.FINANCIAL_FETCH_MAX_RETRIES,
     min_interval_s: float = constants.FINANCIAL_MIN_INTERVAL_S,
 ) -> dict[str, FinancialSnapshot]:
     tickers_list = list(tickers)
     if not tickers_list:
         return {}
-    semaphore = asyncio.Semaphore(max_concurrency)
-    limiter = AsyncRateLimiter(min_interval_s)
-    tasks = [
-        _fetch_financial_snapshot(ticker, semaphore, limiter)
-        for ticker in tickers_list
-    ]
-    results = await asyncio.gather(*tasks)
+    limiter = RateLimiter(min_interval_s)
     snapshots: dict[str, FinancialSnapshot] = {}
-    for snapshot in results:
-        if snapshot:
-            snapshots[snapshot.ticker] = snapshot
+    for ticker in tickers_list:
+        snapshot: FinancialSnapshot | None = None
+        for attempt in range(1, max_retries + 1):
+            limiter.wait()
+            snapshot = _fetch_financial_snapshot_sync(ticker)
+            if snapshot is not None:
+                break
+            _log_and_print_warning(
+                "Failed to fetch financial snapshot for {ticker} on attempt "
+                "{attempt}/{max_retries}",
+                ticker=ticker,
+                attempt=attempt,
+                max_retries=max_retries,
+            )
+        if snapshot is None:
+            _log_and_print_warning(
+                "No financial snapshot returned for {ticker} after {max_retries} "
+                "attempts",
+                ticker=ticker,
+                max_retries=max_retries,
+            )
+            continue
+        snapshots[snapshot.ticker] = snapshot
     return snapshots
 
 
-async def fetch_asset_metadata(
+def fetch_asset_metadata(
     tickers: Iterable[str],
-    max_concurrency: int = constants.METADATA_MAX_CONCURRENCY,
+    max_retries: int = constants.METADATA_FETCH_MAX_RETRIES,
     min_interval_s: float = constants.METADATA_MIN_INTERVAL_S,
 ) -> dict[str, AssetSnapshot]:
     tickers_list = list(tickers)
     if not tickers_list:
         return {}
-    semaphore = asyncio.Semaphore(max_concurrency)
-    limiter = AsyncRateLimiter(min_interval_s)
-    tasks = [
-        _fetch_asset_metadata(ticker, semaphore, limiter)
-        for ticker in tickers_list
-    ]
-    results = await asyncio.gather(*tasks)
+    limiter = RateLimiter(min_interval_s)
     metadata: dict[str, AssetSnapshot] = {}
-    for snapshot in results:
-        if snapshot:
+    for ticker in tickers_list:
+        snapshot = _fetch_asset_metadata(ticker, max_retries, limiter)
+        if snapshot is not None:
             metadata[snapshot.ticker] = snapshot
     return metadata
 
 
-async def _fetch_financial_snapshot(
+def _fetch_asset_metadata(
     ticker: str,
-    semaphore: asyncio.Semaphore,
-    limiter: AsyncRateLimiter,
-) -> FinancialSnapshot | None:
-    async with semaphore:
-        await limiter.wait()
-        return await asyncio.to_thread(_fetch_financial_snapshot_sync, ticker)
+    max_retries: int,
+    limiter: RateLimiter,
+) -> AssetSnapshot | None:
+    snapshot: AssetSnapshot | None = None
+    for attempt in range(1, max_retries + 1):
+        limiter.wait()
+        snapshot = _fetch_asset_metadata_sync(ticker)
+        if snapshot is not None:
+            break
+        _log_and_print_warning(
+            "Failed to fetch asset metadata for {ticker} on attempt "
+            "{attempt}/{max_retries}",
+            ticker=ticker,
+            attempt=attempt,
+            max_retries=max_retries,
+        )
+    if snapshot is None:
+        _log_and_print_warning(
+            "No asset metadata returned for {ticker} after {max_retries} attempts",
+            ticker=ticker,
+            max_retries=max_retries,
+        )
+    return snapshot
 
 
 def _fetch_financial_snapshot_sync(ticker: str) -> FinancialSnapshot | None:
@@ -274,7 +302,7 @@ def _fetch_financial_snapshot_sync(ticker: str) -> FinancialSnapshot | None:
         cashflow = yf_ticker.cashflow
         financials = yf_ticker.financials
     except Exception as exc:
-        logger.warning(
+        _log_and_print_warning(
             "Failed to load financials for {ticker}: {error}",
             ticker=ticker,
             error=exc,
@@ -313,26 +341,26 @@ def _fetch_financial_snapshot_sync(ticker: str) -> FinancialSnapshot | None:
     )
 
 
-async def _fetch_asset_metadata(
-    ticker: str,
-    semaphore: asyncio.Semaphore,
-    limiter: AsyncRateLimiter,
-) -> AssetSnapshot | None:
-    async with semaphore:
-        await limiter.wait()
-        return await asyncio.to_thread(_fetch_asset_metadata_sync, ticker)
-
-
 def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
     symbol = _split_symbol(ticker)
     yf_ticker = yf.Ticker(symbol)
     info: dict | None = None
+    last_error: Exception | None = None
     for attempt in range(1, constants.METADATA_MAX_RETRIES + 1):
         try:
             info = yf_ticker.get_info()
-            break
+            if isinstance(info, dict) and info:
+                break
+            _log_and_print_warning(
+                "Empty asset metadata for {ticker} via info on attempt "
+                "{attempt}/{max_retries}",
+                ticker=ticker,
+                attempt=attempt,
+                max_retries=constants.METADATA_MAX_RETRIES,
+            )
         except Exception as exc:
-            logger.warning(
+            last_error = exc
+            _log_and_print_warning(
                 "Failed to load asset metadata for {ticker} via info on "
                 "attempt {attempt}/{max_retries}: {error}",
                 ticker=ticker,
@@ -340,10 +368,20 @@ def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
                 max_retries=constants.METADATA_MAX_RETRIES,
                 error=exc,
             )
-            if attempt < constants.METADATA_MAX_RETRIES:
-                time.sleep(constants.METADATA_RETRY_BACKOFF_S * attempt)
+        if attempt < constants.METADATA_MAX_RETRIES:
+            time.sleep(constants.METADATA_RETRY_BACKOFF_S * attempt)
     if not isinstance(info, dict) or not info:
-        logger.warning("No asset metadata returned for {ticker}", ticker=ticker)
+        _log_and_print_warning(
+            "No asset metadata returned for {ticker} after {max_retries} attempts",
+            ticker=ticker,
+            max_retries=constants.METADATA_MAX_RETRIES,
+        )
+        if last_error is not None:
+            _log_and_print_warning(
+                "Latest asset metadata error for {ticker}: {error}",
+                ticker=ticker,
+                error=last_error,
+            )
         return _fetch_asset_metadata_fast(ticker, yf_ticker)
     market_cap = _normalize_market_cap(info.get("marketCap"))
     quote_type = info.get("quoteType") or info.get("quote_type")
@@ -360,7 +398,7 @@ def _fetch_asset_metadata_fast(
     try:
         fast_info = yf_ticker.fast_info
     except Exception as exc:
-        logger.warning(
+        _log_and_print_warning(
             "Failed to load asset metadata for {ticker} via fast_info: {error}",
             ticker=ticker,
             error=exc,

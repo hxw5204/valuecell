@@ -150,12 +150,10 @@ class ScreenerPipeline:
         universe = asyncio.run(load_us_universe(exchange_allowlist))
         universe_map = {item.ticker: item for item in universe}
         price_history = market_data.fetch_price_history(universe_map.keys())
-        asset_metadata = asyncio.run(
-            market_data.fetch_asset_metadata(
-                universe_map.keys(),
-                max_concurrency=constants.METADATA_MAX_CONCURRENCY,
-                min_interval_s=constants.METADATA_MIN_INTERVAL_S,
-            )
+        asset_metadata = market_data.fetch_asset_metadata(
+            universe_map.keys(),
+            max_retries=constants.METADATA_FETCH_MAX_RETRIES,
+            min_interval_s=constants.METADATA_MIN_INTERVAL_S,
         )
         price_snapshots = self._build_price_snapshots(
             universe_map, price_history, universe_config, config
@@ -176,12 +174,10 @@ class ScreenerPipeline:
             for snapshot in price_snapshots
             if snapshot.ticker in top_wide_tickers
         ]
-        financials = asyncio.run(
-            market_data.fetch_financial_snapshots(
-                filtered_tickers,
-                max_concurrency=constants.FINANCIAL_MAX_CONCURRENCY,
-                min_interval_s=constants.FINANCIAL_MIN_INTERVAL_S,
-            )
+        financials = market_data.fetch_financial_snapshots(
+            filtered_tickers,
+            max_retries=constants.FINANCIAL_FETCH_MAX_RETRIES,
+            min_interval_s=constants.FINANCIAL_MIN_INTERVAL_S,
         )
         deep_scores = scoring.score_deep(
             price_snapshots, financials, weights.get("deep", {})
