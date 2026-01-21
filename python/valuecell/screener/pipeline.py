@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import subprocess
@@ -147,7 +146,7 @@ class ScreenerPipeline:
         config_hash = self._hash_payload(config_payload)
         universe_config = config_payload.get("universe", {})
         exchange_allowlist = universe_config.get("exchange_allowlist", [])
-        universe = asyncio.run(load_us_universe(exchange_allowlist))
+        universe = load_us_universe(exchange_allowlist)
         universe_map = {item.ticker: item for item in universe}
         price_history = market_data.fetch_price_history(universe_map.keys())
         asset_metadata = market_data.fetch_asset_metadata(
