@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Iterable
 
@@ -14,6 +14,7 @@ from loguru import logger
 
 from . import constants
 from valuecell.adapters.assets.manager import AdapterManager
+from valuecell.adapters.assets.types import AssetPrice
 
 
 @dataclass(frozen=True)
@@ -101,22 +102,78 @@ def _apply_download_results(
     batch: list[str],
     symbols: list[str],
     results: dict[str, pd.DataFrame],
-) -> None:
+) -> set[str]:
+    added: set[str] = set()
     if data.empty:
-        return
+        return added
     if isinstance(data.columns, pd.MultiIndex):
         for symbol in symbols:
             if symbol not in data.columns.get_level_values(0):
                 continue
             df = data[symbol].dropna()
             if not df.empty:
-                results[_symbol_to_ticker(batch, symbol)] = df
+                ticker = _symbol_to_ticker(batch, symbol)
+                results[ticker] = df
+                added.add(ticker)
     else:
         df = data.dropna()
         if df.empty:
-            return
+            return added
         symbol = symbols[0]
-        results[_symbol_to_ticker(batch, symbol)] = df
+        ticker = _symbol_to_ticker(batch, symbol)
+        results[ticker] = df
+        added.add(ticker)
+    return added
+
+
+def _to_float(value: Decimal | None) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def _asset_prices_to_dataframe(prices: list[AssetPrice]) -> pd.DataFrame:
+    if not prices:
+        return pd.DataFrame()
+    rows: list[dict[str, float | datetime | None]] = []
+    for price in prices:
+        close_price = price.close_price if price.close_price is not None else price.price
+        rows.append(
+            {
+                "Datetime": price.timestamp,
+                "Open": _to_float(price.open_price),
+                "High": _to_float(price.high_price),
+                "Low": _to_float(price.low_price),
+                "Close": _to_float(close_price),
+                "Volume": _to_float(price.volume),
+            }
+        )
+    df = pd.DataFrame(rows).set_index("Datetime").sort_index()
+    return df.dropna(how="all")
+
+
+def _fetch_price_history_from_free_providers(
+    tickers: Iterable[str], period_days: int, manager: AdapterManager
+) -> dict[str, pd.DataFrame]:
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=period_days)
+    fallback_results: dict[str, pd.DataFrame] = {}
+    for ticker in tickers:
+        prices = manager.get_historical_prices(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            interval="1d",
+        )
+        df = _asset_prices_to_dataframe(prices)
+        if df.empty:
+            _log_and_print_warning(
+                "Fallback providers returned no price history for {ticker}",
+                ticker=ticker,
+            )
+            continue
+        fallback_results[ticker] = df
+    return fallback_results
 
 
 def fetch_price_history(
@@ -129,10 +186,12 @@ def fetch_price_history(
     if not tickers_list:
         return {}
     results: dict[str, pd.DataFrame] = {}
+    fallback_manager: AdapterManager | None = None
     for start in range(0, len(tickers_list), batch_size):
         batch = tickers_list[start : start + batch_size]
         symbols = [_split_symbol(ticker) for ticker in batch]
         data = pd.DataFrame()
+        download_failed = False
         for attempt in range(1, max_retries + 1):
             try:
                 data = _download_prices(symbols, period_days)
@@ -148,14 +207,26 @@ def fetch_price_history(
                     error=exc,
                 )
         if data.empty:
+            download_failed = True
             _log_and_print_warning(
-                "Skipping remaining batches after failure to fetch price history for "
-                "batch {start}-{end}",
+                "Yfinance failed to fetch price history for batch {start}-{end}; "
+                "switching to fallback providers",
                 start=start,
                 end=min(start + batch_size, len(tickers_list)),
             )
-            break
-        _apply_download_results(data, batch, symbols, results)
+        added = _apply_download_results(data, batch, symbols, results)
+        missing = [ticker for ticker in batch if ticker not in added]
+        if download_failed or missing:
+            if fallback_manager is None:
+                fallback_manager = AdapterManager()
+                fallback_manager.configure_akshare()
+                fallback_manager.configure_baostock()
+            fallback_results = _fetch_price_history_from_free_providers(
+                tickers=missing if missing else batch,
+                period_days=period_days,
+                manager=fallback_manager,
+            )
+            results.update(fallback_results)
         logger.info(
             "Fetched price history for batch {start}-{end} ({count} symbols)",
             start=start,
@@ -276,9 +347,10 @@ def _fetch_asset_metadata(
     limiter: RateLimiter,
 ) -> AssetSnapshot | None:
     snapshot: AssetSnapshot | None = None
+    last_error: Exception | None = None
     for attempt in range(1, max_retries + 1):
         limiter.wait()
-        snapshot = _fetch_asset_metadata_sync(ticker)
+        snapshot, last_error = _fetch_asset_metadata_sync(ticker)
         if snapshot is not None:
             break
         _log_and_print_warning(
@@ -294,6 +366,12 @@ def _fetch_asset_metadata(
             ticker=ticker,
             max_retries=max_retries,
         )
+        fallback_snapshot = _fetch_asset_metadata_after_yfinance_failure(
+            ticker=ticker,
+            last_error=last_error,
+        )
+        if fallback_snapshot is not None:
+            return fallback_snapshot
     return snapshot
 
 
@@ -343,7 +421,9 @@ def _fetch_financial_snapshot_sync(ticker: str) -> FinancialSnapshot | None:
     )
 
 
-def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
+def _fetch_asset_metadata_sync(
+    ticker: str,
+) -> tuple[AssetSnapshot | None, Exception | None]:
     symbol = _split_symbol(ticker)
     yf_ticker = yf.Ticker(symbol)
     info: dict | None = None
@@ -391,17 +471,16 @@ def _fetch_asset_metadata_sync(ticker: str) -> AssetSnapshot | None:
                 ticker=ticker,
                 error=last_error,
             )
-        return _fetch_asset_metadata_after_yfinance_failure(
-            ticker=ticker,
-            yf_ticker=yf_ticker,
-            last_error=last_error,
-        )
+        return None, last_error
     market_cap = _normalize_market_cap(info.get("marketCap"))
     quote_type = info.get("quoteType") or info.get("quote_type")
-    return AssetSnapshot(
-        ticker=ticker,
-        market_cap=market_cap,
-        quote_type=str(quote_type) if quote_type else None,
+    return (
+        AssetSnapshot(
+            ticker=ticker,
+            market_cap=market_cap,
+            quote_type=str(quote_type) if quote_type else None,
+        ),
+        None,
     )
 
 
@@ -423,9 +502,10 @@ def _fetch_asset_metadata_fast(
 
 def _fetch_asset_metadata_after_yfinance_failure(
     ticker: str,
-    yf_ticker: yf.Ticker,
     last_error: Exception | None,
 ) -> AssetSnapshot | None:
+    symbol = _split_symbol(ticker)
+    yf_ticker = yf.Ticker(symbol)
     snapshot = _fetch_asset_metadata_fast(ticker, yf_ticker)
     if snapshot is not None:
         return snapshot
