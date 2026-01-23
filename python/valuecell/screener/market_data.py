@@ -77,7 +77,13 @@ class RateLimiter:
 
 def _log_and_print_warning(message: str, **kwargs: object) -> None:
     logger.warning(message, **kwargs)
-    print(message.format(**kwargs))
+    if _should_print_warning():
+        print(message.format(**kwargs))
+
+
+def _should_print_warning() -> bool:
+    """Return True when loguru is not configured with any sinks."""
+    return not logger._core.handlers
 
 
 def _split_symbol(ticker: str) -> str:
