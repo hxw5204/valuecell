@@ -37,6 +37,7 @@ from .storage import (
     write_evaluation,
     write_report,
     write_run_meta,
+    write_run_inputs,
 )
 from .universe import UniverseTicker, load_us_universe
 
@@ -154,6 +155,7 @@ class ScreenerPipeline:
             max_retries=constants.METADATA_FETCH_MAX_RETRIES,
             min_interval_s=constants.METADATA_MIN_INTERVAL_S,
         )
+        write_run_inputs(run_id, universe, price_history, asset_metadata)
         price_snapshots = self._build_price_snapshots(
             universe_map, price_history, universe_config, config
         )
