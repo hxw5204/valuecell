@@ -6,11 +6,12 @@ import csv
 import json
 import shutil
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, TYPE_CHECKING
 
 from loguru import logger
 
 from valuecell.utils.env import ensure_system_env_dir
+from valuecell.utils.path import get_repo_root_path
 
 from .constants import (
     DATA_DIR_NAME,
@@ -19,6 +20,7 @@ from .constants import (
     REPORTS_DIR_NAME,
     RUNS_DIR_NAME,
 )
+from . import market_data
 from .schemas import (
     LogicGraph,
     ScreenerCandidate,
@@ -27,6 +29,10 @@ from .schemas import (
     ScreenerRunMeta,
     ScreenerRunSummary,
 )
+from .universe import UniverseTicker
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def get_runs_root() -> Path:
@@ -35,6 +41,14 @@ def get_runs_root() -> Path:
     runs_root = base_dir / DATA_DIR_NAME / RUNS_DIR_NAME
     runs_root.mkdir(parents=True, exist_ok=True)
     return runs_root
+
+
+def get_repo_data_root() -> Path:
+    """Return the repo-root data directory for screener inputs."""
+    repo_root = Path(get_repo_root_path())
+    data_root = repo_root / DATA_DIR_NAME / "screener" / "inputs"
+    data_root.mkdir(parents=True, exist_ok=True)
+    return data_root
 
 
 def get_run_dir(run_id: str) -> Path:
@@ -49,6 +63,54 @@ def write_run_meta(run_meta: ScreenerRunMeta) -> None:
     run_dir = get_run_dir(run_meta.run_id)
     meta_path = run_dir / "meta.json"
     meta_path.write_text(run_meta.model_dump_json(indent=2), encoding="utf-8")
+
+
+def write_run_inputs(
+    run_id: str,
+    universe: Iterable[UniverseTicker],
+    price_history: dict[str, "pd.DataFrame"],
+    asset_metadata: dict[str, market_data.AssetSnapshot],
+) -> None:
+    """Write raw inputs for a screener run to the repo data folder."""
+    run_dir = get_repo_data_root() / run_id
+    prices_dir = run_dir / "price_history"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    prices_dir.mkdir(parents=True, exist_ok=True)
+
+    universe_path = run_dir / "universe.json"
+    universe_payload = [_serialize_universe_item(item) for item in universe]
+    universe_path.write_text(
+        json.dumps(universe_payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    metadata_path = run_dir / "asset_metadata.json"
+    metadata_payload = [
+        _serialize_asset_metadata(snapshot)
+        for snapshot in asset_metadata.values()
+    ]
+    metadata_path.write_text(
+        json.dumps(metadata_payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    manifest = {}
+    for ticker, df in price_history.items():
+        filename = f"{_ticker_to_filename(ticker)}.csv"
+        path = prices_dir / filename
+        df.to_csv(path)
+        manifest[ticker] = {
+            "path": str(path.relative_to(run_dir)),
+            "rows": int(len(df)),
+        }
+
+    manifest_path = run_dir / "price_history_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    logger.info("Saved screener inputs to {path}", path=run_dir)
 
 
 def write_candidates(run_id: str, candidates: Iterable[ScreenerCandidate]) -> None:
@@ -87,6 +149,29 @@ def write_candidates(run_id: str, candidates: Iterable[ScreenerCandidate]) -> No
         for candidate in candidates:
             jsonl_file.write(candidate.model_dump_json())
             jsonl_file.write("\n")
+
+
+def _serialize_universe_item(item: UniverseTicker) -> dict[str, str]:
+    return {
+        "ticker": item.ticker,
+        "symbol": item.symbol,
+        "name": item.name,
+        "exchange": item.exchange,
+    }
+
+
+def _serialize_asset_metadata(
+    snapshot: market_data.AssetSnapshot,
+) -> dict[str, str | float | None]:
+    return {
+        "ticker": snapshot.ticker,
+        "market_cap": snapshot.market_cap,
+        "quote_type": snapshot.quote_type,
+    }
+
+
+def _ticker_to_filename(ticker: str) -> str:
+    return ticker.replace(":", "_").replace("/", "_")
 
 
 def write_candidate_detail(
