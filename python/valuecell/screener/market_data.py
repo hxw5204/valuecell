@@ -351,26 +351,30 @@ def _fetch_asset_metadata(
         limiter.wait()
         snapshot, last_error = _fetch_asset_metadata_sync(ticker)
         if snapshot is not None:
+            return snapshot
+        if last_error is not None and _is_rate_limited_error(last_error):
+            # Rate limited and fast_info already tried in _fetch_asset_metadata_sync
+            # Skip remaining retries and go directly to free provider fallback
             break
-        _log_and_print_warning(
-            "Failed to fetch asset metadata for {ticker} on attempt "
-            "{attempt}/{max_retries}",
-            ticker=ticker,
-            attempt=attempt,
-            max_retries=max_retries,
-        )
+        if attempt < max_retries:
+            time.sleep(constants.METADATA_RETRY_BACKOFF_S * attempt)
     if snapshot is None:
-        _log_and_print_warning(
-            "No asset metadata returned for {ticker} after {max_retries} attempts",
-            ticker=ticker,
-            max_retries=max_retries,
-        )
-        fallback_snapshot = _fetch_asset_metadata_after_yfinance_failure(
+        if last_error is not None:
+            logger.debug(
+                "Asset metadata fetch failed for {ticker}: {error}",
+                ticker=ticker,
+                error=last_error,
+            )
+        fallback_snapshot = _fetch_asset_metadata_from_free_providers(
             ticker=ticker,
             last_error=last_error,
         )
         if fallback_snapshot is not None:
             return fallback_snapshot
+        _log_and_print_warning(
+            "No asset metadata available for {ticker}",
+            ticker=ticker,
+        )
     return snapshot
 
 
@@ -427,50 +431,26 @@ def _fetch_asset_metadata_sync(
     yf_ticker = yf.Ticker(symbol)
     info: dict | None = None
     last_error: Exception | None = None
-    for attempt in range(1, constants.METADATA_MAX_RETRIES + 1):
-        try:
-            info = yf_ticker.get_info()
-            if isinstance(info, dict) and info:
-                break
-            _log_and_print_warning(
-                "Empty asset metadata for {ticker} via info on attempt "
-                "{attempt}/{max_retries}",
+    try:
+        info = yf_ticker.get_info()
+    except Exception as exc:
+        last_error = exc
+        if _is_rate_limited_error(exc):
+            # Immediately try fast_info fallback when rate limited
+            logger.debug(
+                "Rate limited for {ticker} via info; trying fast_info",
                 ticker=ticker,
-                attempt=attempt,
-                max_retries=constants.METADATA_MAX_RETRIES,
             )
-        except Exception as exc:
-            last_error = exc
-            _log_and_print_warning(
-                "Failed to load asset metadata for {ticker} via info on "
-                "attempt {attempt}/{max_retries}: {error}",
-                ticker=ticker,
-                attempt=attempt,
-                max_retries=constants.METADATA_MAX_RETRIES,
-                error=exc,
-            )
-            if _is_rate_limited_error(exc):
-                _log_and_print_warning(
-                    "Rate limited while fetching asset metadata for {ticker} "
-                    "via info; falling back to fast_info",
-                    ticker=ticker,
-                )
-                break
-        if attempt < constants.METADATA_MAX_RETRIES:
-            time.sleep(constants.METADATA_RETRY_BACKOFF_S * attempt)
-    if not isinstance(info, dict) or not info:
-        _log_and_print_warning(
-            "No asset metadata returned for {ticker} after {max_retries} attempts",
-            ticker=ticker,
-            max_retries=constants.METADATA_MAX_RETRIES,
-        )
-        if last_error is not None:
-            _log_and_print_warning(
-                "Latest asset metadata error for {ticker}: {error}",
-                ticker=ticker,
-                error=last_error,
-            )
+            snapshot = _fetch_asset_metadata_fast(ticker, yf_ticker)
+            if snapshot is not None:
+                return snapshot, None
         return None, last_error
+    if not isinstance(info, dict) or not info:
+        # Try fast_info fallback for empty response
+        snapshot = _fetch_asset_metadata_fast(ticker, yf_ticker)
+        if snapshot is not None:
+            return snapshot, None
+        return None, None
     market_cap = _normalize_market_cap(info.get("marketCap"))
     quote_type = info.get("quoteType") or info.get("quote_type")
     return (
@@ -489,26 +469,14 @@ def _fetch_asset_metadata_fast(
     try:
         fast_info = yf_ticker.fast_info
     except Exception as exc:
-        _log_and_print_warning(
-            "Failed to load asset metadata for {ticker} via fast_info: {error}",
+        logger.debug(
+            "fast_info fallback failed for {ticker}: {error}",
             ticker=ticker,
             error=exc,
         )
         return None
     market_cap = _normalize_market_cap(getattr(fast_info, "market_cap", None))
     return AssetSnapshot(ticker=ticker, market_cap=market_cap, quote_type=None)
-
-
-def _fetch_asset_metadata_after_yfinance_failure(
-    ticker: str,
-    last_error: Exception | None,
-) -> AssetSnapshot | None:
-    symbol = _split_symbol(ticker)
-    yf_ticker = yf.Ticker(symbol)
-    snapshot = _fetch_asset_metadata_fast(ticker, yf_ticker)
-    if snapshot is not None:
-        return snapshot
-    return _fetch_asset_metadata_from_free_providers(ticker, last_error)
 
 
 def _fetch_asset_metadata_from_free_providers(
@@ -519,9 +487,8 @@ def _fetch_asset_metadata_from_free_providers(
     adapter_manager.configure_baostock()
     asset = adapter_manager.get_asset_info(ticker)
     if asset is None:
-        _log_and_print_warning(
-            "Fallback asset metadata lookup failed for {ticker} after yfinance "
-            "errors: {error}",
+        logger.debug(
+            "Free provider fallback failed for {ticker}: {error}",
             ticker=ticker,
             error=last_error or "unknown error",
         )
