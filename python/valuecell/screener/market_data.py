@@ -359,6 +359,8 @@ def _fetch_asset_metadata(
             attempt=attempt,
             max_retries=max_retries,
         )
+        if last_error is not None and _is_rate_limited_error(last_error):
+            break
     if snapshot is None:
         _log_and_print_warning(
             "No asset metadata returned for {ticker} after {max_retries} attempts",
@@ -427,7 +429,9 @@ def _fetch_asset_metadata_sync(
     yf_ticker = yf.Ticker(symbol)
     info: dict | None = None
     last_error: Exception | None = None
+    attempts_made = 0
     for attempt in range(1, constants.METADATA_MAX_RETRIES + 1):
+        attempts_made = attempt
         try:
             info = yf_ticker.get_info()
             if isinstance(info, dict) and info:
@@ -450,26 +454,15 @@ def _fetch_asset_metadata_sync(
                 error=exc,
             )
             if _is_rate_limited_error(exc):
-                _log_and_print_warning(
-                    "Rate limited while fetching asset metadata for {ticker} "
-                    "via info; falling back to fast_info",
-                    ticker=ticker,
-                )
                 break
         if attempt < constants.METADATA_MAX_RETRIES:
             time.sleep(constants.METADATA_RETRY_BACKOFF_S * attempt)
     if not isinstance(info, dict) or not info:
         _log_and_print_warning(
-            "No asset metadata returned for {ticker} after {max_retries} attempts",
+            "No asset metadata returned for {ticker} after {attempts_made} attempt(s)",
             ticker=ticker,
-            max_retries=constants.METADATA_MAX_RETRIES,
+            attempts_made=attempts_made,
         )
-        if last_error is not None:
-            _log_and_print_warning(
-                "Latest asset metadata error for {ticker}: {error}",
-                ticker=ticker,
-                error=last_error,
-            )
         return None, last_error
     market_cap = _normalize_market_cap(info.get("marketCap"))
     quote_type = info.get("quoteType") or info.get("quote_type")
