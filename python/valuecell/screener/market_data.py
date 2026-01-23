@@ -495,7 +495,15 @@ def _fetch_asset_metadata_fast(
             error=exc,
         )
         return None
-    market_cap = _normalize_market_cap(getattr(fast_info, "market_cap", None))
+    try:
+        market_cap = _normalize_market_cap(getattr(fast_info, "market_cap", None))
+    except Exception as exc:
+        _log_and_print_warning(
+            "Failed to get market_cap for {ticker} via fast_info: {error}",
+            ticker=ticker,
+            error=exc,
+        )
+        return None
     return AssetSnapshot(ticker=ticker, market_cap=market_cap, quote_type=None)
 
 
